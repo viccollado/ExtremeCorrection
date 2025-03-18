@@ -503,12 +503,18 @@ class Gev_ExtremeCorrection():
 
     def time_series_plot(self, hist=True, sim=False):
         """
-        TODO: Añadir esta función que dibuje la serie temporal tanto corregida como la no corregida para compararlas 
-            - Incluir tambien puntos en los máximos históricos y triangulos en los simulados o algo similar para compararlos
+        Time series plot 
+
+        Args:
+            hist (bool, optional): Historical Time Series. Defaults to True.
+            sim (bool, optional): Simulated Time Series. Defaults to False.
+
+        Raises:
+            ValueError: No recomendable plotear los dos gráficos a la vez. Lleva a error
         """
         
         if hist and sim:
-            raise AttributeError("Plotting historical and simulated time seires, choose only one")
+            raise ValueError("Plotting historical and simulated time seires, choose only one")
 
         fig = plt.figure(figsize=(16,8))
         ax = fig.add_subplot(111)
