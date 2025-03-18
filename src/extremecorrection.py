@@ -501,26 +501,19 @@ class Gev_ExtremeCorrection():
             plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300)
         plt.close(fig)
 
-    def time_series_plot(self, hist=True, sim=False):
+    def time_series_plot(self, sim=False):
         """
         Time series plot 
 
         Args:
-            hist (bool, optional): Historical Time Series. Defaults to True.
-            sim (bool, optional): Simulated Time Series. Defaults to False.
-
-        Raises:
-            ValueError: No recomendable plotear los dos gráficos a la vez. Lleva a error
+            sim (bool, optional): If True Simulated TS plot, else Historical TS plot. Defaults to False.
         """
-        
-        if hist and sim:
-            raise ValueError("Plotting historical and simulated time seires, choose only one")
 
         fig = plt.figure(figsize=(16,8))
         ax = fig.add_subplot(111)
 
         # Historical time series
-        if hist:
+        if not sim:
             ax.plot(np.arange(1, self.n_pit+1)/self.freq, self.pit_data, label="No Corrected Historical data")
             ax.plot(np.arange(1, self.n_pit+1)/self.freq, self.pit_data_corrected, label="Corrected Historical data")
             ax.scatter((np.arange(1, self.n_pit+1)/self.freq)[self.max_idx], self.max_data, label="No Corrected Annual Maxima")
@@ -539,7 +532,7 @@ class Gev_ExtremeCorrection():
         ax.grid()
         fig.tight_layout()
         if self.folder is not None:
-            if hist:
+            if not sim:
                 plt.savefig(f"{self.folder}/TimeSeries_hist.png", dpi=300)
             if sim:
                 plt.savefig(f"{self.folder}/TimeSeries_sim.png", dpi=300)
