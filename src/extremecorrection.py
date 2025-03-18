@@ -501,10 +501,40 @@ class Gev_ExtremeCorrection():
             plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300)
         plt.close(fig)
 
-    def time_series_plot():
+    def time_series_plot(self, hist=True, sim=False):
         """
         TODO: Añadir esta función que dibuje la serie temporal tanto corregida como la no corregida para compararlas 
             - Incluir tambien puntos en los máximos históricos y triangulos en los simulados o algo similar para compararlos
         """
-        ...
-    
+        
+        if hist and sim:
+            raise AttributeError("Plotting historical and simulated time seires, choose only one")
+
+        fig = plt.figure(figsize=(16,8))
+        ax = fig.add_subplot(111)
+
+        # Historical time series
+        if hist:
+            ax.plot(np.arange(1, self.n_pit+1)/self.freq, self.pit_data, label="No Corrected Historical data")
+            ax.plot(np.arange(1, self.n_pit+1)/self.freq, self.pit_data_corrected, label="Corrected Historical data")
+            ax.scatter((np.arange(1, self.n_pit+1)/self.freq)[self.max_idx], self.max_data, label="No Corrected Annual Maxima")
+            ax.scatter((np.arange(1, self.n_pit+1)/self.freq)[self.max_idx], self.pit_data_corrected[self.max_idx], label="Corrected Annual Maxima")
+            ax.set_xticks(np.arange(1, self.n_peaks+1))
+
+        # Simulated time series
+        if sim:
+            ax.plot(np.arange(1, self.n_sim_pit+1)/self.freq, self.sim_pit_data, label="No Corrected Simulated data")
+            ax.plot(np.arange(1, self.n_sim_pit+1)/self.freq, self.sim_pit_data_corrected, label="Corrected Simulated data")
+            ax.scatter((np.arange(1, self.n_sim_pit+1)/self.freq)[self.sim_max_idx], self.sim_max_data, label="No Corrected Annual Maxima")
+            ax.scatter((np.arange(1, self.n_sim_pit+1)/self.freq)[self.sim_max_idx], self.sim_pit_data_corrected[self.sim_max_idx], label="Corrected Annual Maxima")
+            ax.set_xticks(np.arange(1, self.n_sim_peaks+1))
+        
+        ax.legend()
+        ax.grid()
+        fig.tight_layout()
+        if self.folder is not None:
+            if hist:
+                plt.savefig(f"{self.folder}/TimeSeries_hist.png", dpi=300)
+            if sim:
+                plt.savefig(f"{self.folder}/TimeSeries_sim.png", dpi=300)
+        plt.close(fig)
