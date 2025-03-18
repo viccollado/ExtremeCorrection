@@ -8,3 +8,4 @@ src/__pycache__/
 Figures/
 OptimalThresholdSelection/__pycache__/optimal_threshold_studentized.cpython-312.pyc
 OptimalThresholdSelection/__pycache__/threshold_peak_extraction.cpython-312.pyc
+PaperMonteCarloStructuralSafety/
