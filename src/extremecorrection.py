@@ -398,7 +398,7 @@ class Gev_ExtremeCorrection():
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
         ax.set_xlim(right=self.n_sim_peaks+self.n_sim_peaks//10)
-        ax.legend()
+        ax.legend('upper left')
         ax.grid()
         if self.folder is not None:
             plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300)
