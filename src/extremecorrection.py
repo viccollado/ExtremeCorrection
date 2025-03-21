@@ -204,7 +204,7 @@ class Gev_ExtremeCorrection():
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=250)
+        ax.set_xlim(right=10000)
         ax.legend()
         ax.grid()
         if self.folder is not None:
@@ -397,7 +397,7 @@ class Gev_ExtremeCorrection():
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=self.n_sim_peaks+self.n_sim_peaks//10)
+        ax.set_xlim(right=10000)
         ax.legend(loc='upper left')
         ax.grid()
         if self.folder is not None:
