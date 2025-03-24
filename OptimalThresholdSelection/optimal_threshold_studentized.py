@@ -185,7 +185,7 @@ class OptimalThreshold():
                 ax.legend(loc='upper right')
                 if filename is not None:
                     plt.savefig(f"{filename}_StudenRes{it}.png", dpi=300)
-                plt.show()
+                plt.close()
 
             if fobj > chi2.ppf(1-siglevel, df=u_values.size-2) or np.abs(rN[0]) > norm.ppf(1-siglevel/2,0,1):
                 if display_flag:
@@ -301,7 +301,7 @@ def threshold_search(u_data, e_data, W_data, ploteat=False, filename=None):
         plt.tight_layout()
         if filename is not None:
             plt.savefig(f"{filename}.png", dpi=300)
-        plt.show()
+        plt.close()
     
     return fitresult, threshold
 
