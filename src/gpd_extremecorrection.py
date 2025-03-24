@@ -59,7 +59,11 @@ class GPD_ExtremeCorrection():
         self.n_year_peaks = self.max_data.shape[0]
         self.n_pit = self.pit_data.shape[0]
 
-        self.obtain_pots()  # TODO: Poder cambiar los parametros iniciales
+        # TODO: Poder cambiar los parametros iniciales
+        self.pot_data, self.pot_data_sorted = self.obtain_pots(
+            self.pit_data,
+            optimize_threshold=True
+        )  
     
         self.n_pot_peaks = len(self.pot_data)
 
@@ -117,10 +121,12 @@ class GPD_ExtremeCorrection():
 
     def obtain_pots(
             self, 
+            data,   # TODO: Añadir tipo de entrada para validar (np.ndarray?)
             n0: int=10, 
             min_peak_distance: int=2, 
             siglevel: float=0.05,
             threshold = 0.0,
+            optimize_threshold = True,
             plot_flag = True
     ):
         """
@@ -137,7 +143,7 @@ class GPD_ExtremeCorrection():
             opt_threshold: Optimal threshold selected
             POTs (np.array): POTs
         """
-        opt_thres = OptimalThreshold(self.pit_data)
+        opt_thres = OptimalThreshold(data)
 
         # Peaks extraction
         opt_thres.threshold_peak_extraction(
@@ -146,20 +152,21 @@ class GPD_ExtremeCorrection():
             min_peak_distance=min_peak_distance
         )
 
-        os.makedirs(f"{self.folder}/OptimalThresholdPlots", exist_ok=True)
 
         # Optimal threshold
-        self.opt_threshold = opt_thres.threshold_studentized_residuals(
-            siglevel=siglevel,
-            plot_flag=plot_flag,
-            filename=f"{self.folder}/OptimalThresholdPlots/{self.var}",
-            display_flag=False
-            ).item()
+        if optimize_threshold:
+            os.makedirs(f"{self.folder}/OptimalThresholdPlots", exist_ok=True)
+            self.opt_threshold = opt_thres.threshold_studentized_residuals(
+                siglevel=siglevel,
+                plot_flag=plot_flag,
+                filename=f"{self.folder}/OptimalThresholdPlots/{self.var}",
+                display_flag=False
+                ).item()
         
-        self.pot_data = opt_thres.pks[opt_thres.pks > self.opt_threshold]
-        self.pot_data_sorted = np.sort(self.pot_data)
+        pot = opt_thres.pks[opt_thres.pks > self.opt_threshold]
+        pot_sorted = np.sort(pot)
 
-        # return opt_threshold, pot
+        return pot, pot_sorted
         
     
     def apply_correction(self, fit_diag=False):
@@ -383,53 +390,73 @@ class GPD_ExtremeCorrection():
         """
         self.simulated_data = simulated_data
 
-        self.sim_max_data = simulated_data.groupby([self.yyyy_var], as_index=False)[self.var].max()[self.var].values     # Simulated annual maxima data
-        self.sim_max_idx = simulated_data.groupby([self.yyyy_var])[self.var].idxmax().values                             # Simulated annual maxima indices
-        self.sim_max_data_sorted = np.sort(self.sim_max_data)                                                                 # Sorted simulated annual maxima
-        self.sim_max_data_sorted_idx = np.argsort(self.sim_max_data)                                                          # Indices of sorted simulated annual maxima
+        # Annual maxima
+        self.sim_max_data = simulated_data.groupby([self.yyyy_var], as_index=False)[self.var].max()[self.var].values        # Simulated annual maxima data
+        self.sim_max_idx = simulated_data.groupby([self.yyyy_var])[self.var].idxmax().values                                # Simulated annual maxima indices
+        self.sim_max_data_sorted = np.sort(self.sim_max_data)                                                               # Sorted simulated annual maxima
+        self.sim_max_data_sorted_idx = np.argsort(self.sim_max_data)                                                        # Indices of sorted simulated annual maxima
 
+        # Point-in-time
         self.sim_pit_data = simulated_data[self.var].values      # Simulated point-in-time data
         self.sim_pit_data_sorted = np.sort(self.sim_pit_data)         # Sorted simulated point-in-time data
 
-        self.n_sim_peaks = self.sim_max_data.shape[0]
+        # POT 
+        self.sim_pot_data, self.sim_pot_data_sorted = self.obtain_pots(
+            self.sim_pit_data,
+            threshold=self.opt_threshold,
+            optimize_threshold=False
+        )
+
+        # Number of data (annual maxima, point-in-time and pot)
+        self.n_sim_year_peaks = self.sim_max_data.shape[0]
         self.n_sim_pit = self.sim_pit_data.shape[0]
+        self.n_sim_pot_peaks = self.sim_pot_data.shape[0] 
 
+        self.sim_poiss_parameter = self.n_sim_pot_peaks/self.n_sim_year_peaks   # Poisson parameter of simulated data
 
-        self.sim_first_year = np.min(simulated_data[self.yyyy_var].values)
-        self.n_year_intervals = self.n_sim_peaks//self.n_peaks
+        self.sim_first_year = np.min(simulated_data[self.yyyy_var].values)  # First year of the simulation
+        self.n_year_intervals = self.n_sim_year_peaks//self.n_year_peaks    # Nº of intervals to divide the simulated data
         # Divide the simulated data in intervals of historical length
-        self.sim_max_data_idx_intervals = {}
+        self.sim_max_data_idx_intervals = {}    # Annual maximas per intervals
         for i_year in range(self.n_year_intervals):
             self.sim_max_data_idx_intervals[i_year] = simulated_data[(self.sim_first_year + self.n_peaks*i_year <= simulated_data[self.yyyy_var]) & (simulated_data[self.yyyy_var] < self.sim_first_year+self.n_peaks*(i_year+1))].groupby([self.yyyy_var])[self.var].idxmax().values           
 
 
-        # Correction           
-        # Empirical distribution function for Annual Maxima
-        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_peaks + 1) / (self.n_sim_peaks + 1)
+        ### Apply Correction  in POTs 
+        # POT 
+        self.ecdf_pot_probs_sim = np.arange(1, self.n_sim_pot_peaks + 1) / (self.n_sim_pot_peaks + 1)   # Empirical Dist Funct
+        self.sim_pot_data_corrected = stats.genpareto.ppf(self.ecdf_pot_probs_sim, self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1])    # Corrected POT
+        
+        # Annual Maxima
+        # self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_peaks + 1) / (self.n_sim_peaks + 1)    # Empirical distribution function for Annual Maxima
         # Correct Annual Maxima using the fitted GEV
-        self.sim_max_data_corrected = stats.genextreme.ppf(self.ecdf_annmax_probs_sim, self.gpd_parameters[2], loc=self.gpd_parameters[0], scale=self.gpd_parameters[1])
+        # self.sim_max_data_corrected = stats.genextreme.ppf(self.ecdf_annmax_probs_sim, self.gpd_parameters[2], loc=self.gpd_parameters[0], scale=self.gpd_parameters[1])
         
         # Correct point-in-time data 
         sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
         
-        if self.n_sim_peaks > 1:
+        if self.n_sim_pot_peaks > 1:
             # Create a boolean mask for values above the first “peak_values[0]”
-            above_mask = sim_aux_pit_corrected > self.sim_max_data_sorted[0]
+            above_mask = sim_aux_pit_corrected > self.sim_pot_data_sorted[0]
             # Clip the values to interpolate
-            clipped_vals = np.clip(sim_aux_pit_corrected[above_mask], self.sim_max_data_sorted[0], self.sim_max_data_sorted[-1])
+            clipped_vals = np.clip(sim_aux_pit_corrected[above_mask], self.sim_pot_data_sorted[0], self.sim_pot_data_sorted[-1])
             
             # Interpolate them onto the corrected peak range
             sim_aux_pit_corrected[above_mask] = np.interp(
-                clipped_vals,              # x-coords to interpolate
-                self.sim_max_data_sorted,       # x-coords of data points
-                self.sim_max_data_corrected     # y-coords of data points
+                clipped_vals,                   # x-coords to interpolate
+                self.sim_pot_data_sorted,       # x-coords of data points
+                self.sim_pot_data_corrected     # y-coords of data points
             )
             
             # Store the corrected data
             self.sim_pit_data_corrected = sim_aux_pit_corrected
+            self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
+            self.sim_pit_data_corrected = np.sort(self.sim_max_data_corrected)
         else:
             # Store the corrected data 
             self.sim_pit_data_corrected = sim_aux_pit_corrected
+            self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
+            self.sim_pit_data_corrected = np.sort(self.sim_max_data_corrected)
 
 
     def sim_return_period_plot(self, show_corrected=True, show_uncorrected=True):
