@@ -45,7 +45,7 @@ def gmm_quantile(gmm, probabilities):
     probabilities = np.atleast_1d(probabilities)
     quantiles = np.zeros_like(probabilities, dtype=float)
     
-    for i, p in tqdm(enumerate(probabilities)):
+    for i, p in enumerate(tqdm(probabilities)):
         # Use a root-finding algorithm (bisect method) to invert the CDF.
         result = root_scalar(
             lambda x: gmm_cdf(gmm, x) - p,
