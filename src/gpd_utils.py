@@ -40,8 +40,8 @@ def dq_gpd(F, u, sigma, gamma):
         Dqxi = sigma*(1-(1-F)**(-gamma)*(1+gamma*np.log(1-F)))/(gamma**2)
 
     Dq[0,:] = Dqu
-    Dq[0,:] = Dqsigma*sigma
-    Dq[1,:] = Dqxi
+    Dq[1,:] = Dqsigma*sigma
+    Dq[2,:] = Dqxi
 
     return Dq
 
