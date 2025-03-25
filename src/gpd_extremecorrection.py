@@ -469,7 +469,7 @@ class GPD_ExtremeCorrection():
         # GPD fit over a grid of x-values
         x_vals_gpd_sim = np.linspace(self.sim_pot_data_corrected[0], self.sim_pot_data_corrected[-1], 1000)
         # Return period from GPD fitted
-        gpd_probs_fitted = stats.genextreme.cdf(x_vals_gpd_sim, self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1])
+        gpd_probs_fitted = stats.genpareto.cdf(x_vals_gpd_sim, self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1])
         T_gpd_fitted = 1.0 / (1.0 - gpd_probs_fitted) / self.poiss_parameter #*(40/len(max_data_hist[wt]))#(10000/n_peaks)
         
         # GPD Corrected peaks: re-check CDF and return periods
