@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 import numdifftools as ndt
+from typing import Dict
 
 # GPD and POT utils
 from gpd_utils import dq_gpd, nll_gpd
@@ -21,11 +22,12 @@ class GPD_ExtremeCorrection():
     def __init__(self, 
                  data: pd.DataFrame, 
                  config: dict,
-                 conf: float = 0.95
+                 pot_config: dict,
+                 conf: float = 0.95,
 
                  # Antiguas variables
-                #  data_var: str = 'Hs', frequency: float | int = 365.25, 
-                #  year_var: str = 'yyyy', month_var: str = 'mm'
+                 # data_var: str = 'Hs', frequency: float | int = 365.25, 
+                 # year_var: str = 'yyyy', month_var: str = 'mm'
                  ):
         """
         Initialize the extreme correction methodology
@@ -39,6 +41,7 @@ class GPD_ExtremeCorrection():
                 - dd_var (str): Optional, Name of day variable
                 - freq (float): Frequency of data along one year (if daily data, freq = 365.25)
                 - folder (str): Folder to save plots.
+            pot_config (dict): Configuration for peaks extraction.
             conf (float): Confidence level for confidence intervals
         """
 
@@ -59,9 +62,15 @@ class GPD_ExtremeCorrection():
         self.n_year_peaks = self.max_data.shape[0]
         self.n_pit = self.pit_data.shape[0]
 
-        # TODO: Poder cambiar los parametros iniciales
+        # POT extracting config and fit
+        self.pot_config = pot_config
         self.pot_data, self.pot_data_sorted = self.obtain_pots(
             self.pit_data,
+            n0 = self.pot_config['n0'], 
+            min_peak_distance = self.pot_config['min_peak_distance'], 
+            siglevel = self.pot_config['siglevel'],
+            threshold = self.pot_config['init_threshold'],
+            plot_flag = self.pot_config['plot_flag'],
             optimize_threshold=True
         )  
     
@@ -119,9 +128,28 @@ class GPD_ExtremeCorrection():
         else:
             self.folder = None
 
+    def validate_pot_config(self):
+
+        if self.pot_config.get('n0') is None:
+            self.pot_config['n0'] = 10
+        
+        if self.pot_config.get('min_peak_distance') is None:
+            self.pot_config['min_peak_distance'] = 2
+        
+        if self.pot_config.get('init_threshold') is None:
+            self.pot_config['init_threshold'] = 0.0
+        
+        if self.pot_config.get('siglevel') is None:
+            self.pot_config['siglevel'] = 0.05
+        
+        if self.pot_config.get('plot_flag') is None:
+            self.pot_config['plot_flag'] = True
+        
+        
+
     def obtain_pots(
             self, 
-            data,   # TODO: Añadir tipo de entrada para validar (np.ndarray?)
+            data: np.ndarray,  
             n0: int=10, 
             min_peak_distance: int=2, 
             siglevel: float=0.05,
