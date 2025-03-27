@@ -29,7 +29,7 @@ class OptimalThreshold():
         self.fobj = None
         self.r = None
 
-    def threshold_peak_extraction(self, threshold, n0, min_peak_distance):
+    def threshold_peak_extraction(self, threshold, n0, min_peak_distance, siglevel=0.05):
         """
         This function identifies peaks in a dataset that exceed a specified 
         threshold and computes statistics such as mean exceedances, variances, 
@@ -67,10 +67,13 @@ class OptimalThreshold():
             autocorrelations = np.zeros((num_lags, 3), dtype=float)
             for i in range(num_lags):
                 lag = i + 1  
-                r, p_value = pearsonr(pks[:-lag], pks[lag:])
-                autocorrelations[i, 0] = lag
+                r, p_value = pearsonr(pks[:-lag], pks[lag:])    # Test corr != 0
+                autocorrelations[i, 0] = int(lag)
                 autocorrelations[i, 1] = r
                 autocorrelations[i, 2] = p_value
+
+                if p_value < siglevel:
+                    Warning(f"Lag {int(lag)} significant, consider increase the number of min_peak_distance")
         else:
             # Not enough peaks for autocorrelation analysis
             autocorrelations = np.array([])
