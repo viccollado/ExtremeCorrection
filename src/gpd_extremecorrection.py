@@ -11,7 +11,7 @@ from gpd_utils import dq_gpd, nll_gpd
 from pot_utils import dq_pot, q_pot, nll_pot, cdf_pot
 
 # Optimal Threshold
-from OptimalThresholdSelection.optimal_threshold_studentized import OptimalThreshold
+from src.optimal_threshold_studentized import OptimalThreshold
 
 
 
