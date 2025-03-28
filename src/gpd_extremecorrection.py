@@ -433,6 +433,10 @@ class GPD_ExtremeCorrection():
         self.sim_pot_data, self.sim_pot_data_sorted = self.obtain_pots(
             self.sim_pit_data,
             threshold=self.opt_threshold,
+            n0 = self.pot_config['n0'],
+            min_peak_distance=self.pot_config['min_peak_distance'],
+            siglevel = self.pot_config['siglevel'],
+            plot_flag = self.pot_config['plot_flag'],
             optimize_threshold=False
         )
 
@@ -649,10 +653,10 @@ class GPD_ExtremeCorrection():
         # Annual Return Periods
         # ax.semilogx(T_ev_corrected_hist[wt], stats.genextreme.ppf(ecdf_annmax_probs_hist[wt], shape_gev[wt], loc=loc_gev[wt], scale=scale_gev[wt]), 
         #             color = "#FF0000", linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-        ax1.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GEV')
+        ax1.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
         ax1.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
         
-        ax2.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GEV')
+        ax2.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
         ax2.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
         
         # Confidence intervals
