@@ -191,7 +191,7 @@ class GPD_ExtremeCorrection():
                 display_flag=False
                 ).item()
         
-        pot = opt_thres.pks[opt_thres.pks > self.opt_threshold]
+        pot = opt_thres.pks
         pot_sorted = np.sort(pot)
 
         return pot, pot_sorted
