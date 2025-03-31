@@ -64,6 +64,7 @@ class GPD_ExtremeCorrection():
 
         # POT extracting config and fit
         self.pot_config = pot_config
+        self.validate_pot_config()
         self.pot_data, self.pot_data_sorted = self.obtain_pots(
             self.pit_data,
             n0 = self.pot_config['n0'], 
