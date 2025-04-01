@@ -320,7 +320,7 @@ class GPD_ExtremeCorrection():
         # Corrected data 
         if show_corrected:
             ax.semilogx(T_pt_corrected_hist, np.sort(self.pit_data_corrected), linewidth=0, marker='o',markersize=3, label='Corrected Daily Data')
-            ax.semilogx(self.T_ev_corrected_hist, stats.genpareto.ppf(self.ecdf_pot_probs_hist, self.gpd_parameters[2], loc=self.gpd_parameters[0], scale=self.gpd_parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=r'Corrected POT')
+            ax.semilogx(self.T_ev_corrected_hist, stats.genpareto.ppf(self.ecdf_pot_probs_hist, self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=r'Corrected POT')
             # ax.semilogx(self.T_annmax, q_pot(self.ecdf_annmax_probs_hist, self.opt_threshold, self.poiss_parameter, self.gpd_parameters[1], self.gpd_parameters[2]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
             ax.semilogx(self.T_annmax, self.max_data_corrected_sort, color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
 
