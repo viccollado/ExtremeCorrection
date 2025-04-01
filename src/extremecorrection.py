@@ -248,9 +248,9 @@ class ExtremeCorrection():
             self.plot_diagnostic(save=True)
 
         if self.method == "POT":
-            self.pot_correction()
+            self._pot_correction()
         elif self.method == "AnnMax":
-            self.annmax_correction()
+            self._annmax_correction()
 
     def extreme_fit(self):
 
@@ -399,7 +399,7 @@ class ExtremeCorrection():
 
         return fig
     
-    def pot_correction(
+    def _pot_correction(
             self
     ):
         
@@ -446,7 +446,7 @@ class ExtremeCorrection():
 
             Warning("Only 1 POT used in the historical correction")
 
-    def annmax_correction(
+    def _annmax_correction(
             self
     ):
 
@@ -497,17 +497,17 @@ class ExtremeCorrection():
             show_uncorrected=True
     ):
         if self.method == "POT":
-            self.pot_return_period_plot(
+            self._pot_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
         elif self.method == "AnnMax":
-            self.annmax_correction(
+            self._annmax_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
 
-    def pot_return_period_plot(
+    def _pot_return_period_plot(
             self, 
             show_corrected=False, 
             show_uncorrected=True
@@ -630,7 +630,7 @@ class ExtremeCorrection():
             plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300)
         plt.close(fig)
 
-    def annmax_return_period_plot(
+    def _annmax_return_period_plot(
             self, 
             show_corrected=False, 
             show_uncorrected=True
@@ -720,11 +720,11 @@ class ExtremeCorrection():
     ):
         
         if self.method == "POT":
-            self.pot_correction_sim()
+            self._pot_correction_sim()
         elif self.method == "AnnMax":
-            self.annmax_correction_sim()
+            self._annmax_correction_sim()
 
-    def pot_correction_sim(self):
+    def _pot_correction_sim(self):
 
         ### Apply Correction  in POTs 
         # POT 
@@ -766,7 +766,7 @@ class ExtremeCorrection():
             self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
 
-    def annmax_correction_sim(self):
+    def _annmax_correction_sim(self):
  
         # Correction           
         # Empirical distribution function for Annual Maxima
@@ -809,17 +809,17 @@ class ExtremeCorrection():
     ):
         
         if self.method == "POT":
-            self.pot_sim_return_period_plot(
+            self._pot_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
         elif self.method == "AnnMax":
-            self.annmax_sim_return_period_plot(
+            self._annmax_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
     
-    def pot_sim_return_period_plot(
+    def _pot_sim_return_period_plot(
             self, 
             show_corrected=True, 
             show_uncorrected=True
@@ -932,7 +932,7 @@ class ExtremeCorrection():
             plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300)
         plt.close(fig)
 
-    def annmax_sim_return_period_plot(
+    def _annmax_sim_return_period_plot(
             self, 
             show_corrected=True, 
             show_uncorrected=True
@@ -1012,11 +1012,11 @@ class ExtremeCorrection():
     ):
         
         if self.method == "POT":
-            self.pot_interval_return_period_plot(alpha=alpha)
+            self._pot_interval_return_period_plot(alpha=alpha)
         elif self.method == "AnnMax":
-            self.annmax_interval_return_period_plot(alpha=alpha)
+            self._annmax_interval_return_period_plot(alpha=alpha)
 
-    def pot_interval_return_period_plot(
+    def _pot_interval_return_period_plot(
             self,
             alpha=0.2
     ):
@@ -1116,7 +1116,7 @@ class ExtremeCorrection():
             plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300)
         plt.close(fig)
 
-    def annmax_interval_return_period_plot(
+    def _annmax_interval_return_period_plot(
             self,
             alpha=0.2
     ):
