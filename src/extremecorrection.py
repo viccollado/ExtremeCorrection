@@ -22,7 +22,8 @@ class ExtremeCorrection():
             data_sim: pd.DataFrame,
             config: dict,
             pot_config: dict,
-            conf_level: float = 0.95
+            conf_level: float = 0.95,
+            tolerance: float = None
     ):
 
         # Validate config dictionary
@@ -35,9 +36,10 @@ class ExtremeCorrection():
 
         ### Historical data
         # Define historical data
-        self.max_data = self.data_hist.groupby(self.data_hist[self.time_var].dt.year, as_index=False)[self.var].max()[self.var].values    # Annual Maxima
+        # self.data_hist['year'] = self.data_hist[self.time_var].dt.year
+        self.max_data = self.data_hist.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values    # Annual Maxima
+        self.max_idx = self.data_hist.groupby(self.yyyy_var)[self.var].idxmax().values                            # Annual Maxima indices
         self.max_data_sorted = np.sort(self.max_data)                                                               # Sorted Annual Maxima 
-        self.max_idx = self.data_hist.groupby(self.data_hist[self.time_var].dt.year)[self.var].idxmax().values                            # Annual Maxima indices
         self.pit_data = self.data_hist[self.var].values                                                             # Point-in-time data (hourly, daily...)
         self.pit_data_sorted = np.sort(self.pit_data)                                                               # Sorted point-in-time data (hourly, daily...)
 
@@ -49,8 +51,9 @@ class ExtremeCorrection():
 
         ### Simulated Data
         # Annual maxima
-        self.sim_max_data = self.data_sim.groupby(self.data_sim[self.time_var].dt.year, as_index=False)[self.var].max()[self.var].values     # Simulated annual maxima data
-        self.sim_max_idx = self.data_sim.groupby(self.data_sim[self.time_var].dt.year)[self.var].idxmax().values                             # Simulated annual maxima indices
+        # self.data_sim['year'] = self.data_sim[self.time_var].dt.year
+        self.sim_max_data = self.data_sim.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values     # Simulated annual maxima data
+        self.sim_max_idx = self.data_sim.groupby(self.yyyy_var)[self.var].idxmax().values                             # Simulated annual maxima indices
         self.sim_max_data_sorted = np.sort(self.sim_max_data)                                                           # Sorted simulated annual maxima
         self.sim_pit_data = self.data_sim[self.var].values                                                              # Simulated point-in-time data
         self.sim_pit_data_sorted = np.sort(self.sim_pit_data)                                                           # Sorted simulated point-in-time data
@@ -62,11 +65,11 @@ class ExtremeCorrection():
         self.n_sim_pit = self.sim_pit_data.shape[0]          # Nº of simulated point-in-time observations
 
         # Divide data in intervals of nº of historical years
-        self.sim_first_year = np.min(self.data_sim[self.time_var].dt.year)     # First year of the simulation
+        self.sim_first_year = np.min(self.data_sim[self.yyyy_var])     # First year of the simulation
         self.n_year_intervals = self.n_sim_year_peaks//self.n_year_peaks    # Nº of intervals to divide the simulated data
         self.sim_max_data_idx_intervals = {}    # Annual maximas per intervals
         for i_year in range(self.n_year_intervals):
-            self.sim_max_data_idx_intervals[i_year] = self.data_sim[(self.sim_first_year + self.n_year_peaks*i_year <= self.data_sim[self.time_var].dt.year) & (self.data_sim[self.time_var].dt.year < self.sim_first_year+self.n_year_peaks*(i_year+1))].groupby(self.data_sim[self.time_var].dt.year)[self.var].idxmax().values           
+            self.sim_max_data_idx_intervals[i_year] = self.data_sim[(self.sim_first_year + self.n_year_peaks*i_year <= self.data_sim[self.yyyy_var]) & (self.data_sim[self.yyyy_var] < self.sim_first_year+self.n_year_peaks*(i_year+1))].groupby(self.yyyy_var)[self.var].idxmax().values           
 
 
         # POT extracting config and fit
@@ -74,7 +77,8 @@ class ExtremeCorrection():
         self._validate_pot_config()
 
         # Choose the method GEV or GPD
-        self._define_method()
+
+        self._define_method(tolerance=tolerance)
 
         # Initializa distribution parameters
         # If Annual Maxima (location, scale, xi); If POT (threshold, scale, xi)
@@ -232,6 +236,12 @@ class ExtremeCorrection():
                 filename=f"{self.folder}/OptimalThresholdPlots/{self.var}",
                 display_flag=False
                 ).item()
+            
+            opt_thres.threshold_peak_extraction(
+                    threshold=self.opt_threshold,
+                    n0=n0,
+                    min_peak_distance=min_peak_distance
+                )
         
         pot = opt_thres.pks
         pot_sorted = np.sort(pot)
@@ -256,7 +266,7 @@ class ExtremeCorrection():
 
         if self.method == "POT":
             shape_gpd, loc_gpd, scale_gpd = stats.genpareto.fit(self.pot_data-self.opt_threshold, floc = 0)
-            return [self.opt_threshold, loc_gpd, scale_gpd]
+            return [self.opt_threshold, scale_gpd, shape_gpd]
         
         elif self.method == "AnnMax":
             shape_gev, loc_gev, scale_gev = stats.genextreme.fit(self.max_data, 0)
@@ -301,9 +311,8 @@ class ExtremeCorrection():
     def gev_qqplot(self):
 
         # Calcular cuantiles teóricos de la GPD ajustada
-        n = len(self.max_data)
-        probabilities = (np.arange(1, n + 1)) / (n+1)  # Probabilidades de los cuantiles empíricos
-        gev_quantiles = stats.genextreme.ppf(probabilities, c=self.gev_parameters[2], loc=self.gev_parameters[0], scale=self.gev_parameters[1])
+        probabilities = (np.arange(1, self.n_year_peaks + 1)) / (self.n_year_peaks+1)  # Probabilidades de los cuantiles empíricos
+        gev_quantiles = stats.genextreme.ppf(probabilities, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
@@ -322,8 +331,8 @@ class ExtremeCorrection():
     def gev_ppplot(self):
 
         # Calcular cuantiles teóricos de la GPD ajustada
-        probabilities = (np.arange(1, self.n_peaks + 1)) / (self.n_peaks+1)  # Probabilidades de los cuantiles empíricos
-        gev_probs = stats.genextreme.cdf(self.max_data_sorted, c=self.gev_parameters[2], loc=self.gev_parameters[0], scale=self.gev_parameters[1])
+        probabilities = (np.arange(1, self.n_year_peaks + 1)) / (self.n_year_peaks+1)  # Probabilidades de los cuantiles empíricos
+        gev_probs = stats.genextreme.cdf(self.max_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
@@ -362,8 +371,8 @@ class ExtremeCorrection():
     def gpd_qqplot(self):
 
         # Calcular cuantiles teóricos de la GPD ajustada
-        probabilities = (np.arange(1, self.n_pot_peaks + 1)) / (self.n_pot_peaks+1)  # Probabilidades de los cuantiles empíricos
-        gpd_quantiles = stats.genpareto.ppf(probabilities, c=self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1])
+        probabilities = (np.arange(1, self.n_pot + 1)) / (self.n_pot+1)  # Probabilidades de los cuantiles empíricos
+        gpd_quantiles = stats.genpareto.ppf(probabilities, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
@@ -382,8 +391,8 @@ class ExtremeCorrection():
     def gpd_ppplot(self):
 
         # Calcular cuantiles teóricos de la GPD ajustada
-        probabilities = (np.arange(1, self.n_pot_peaks + 1) - 0.5) / (self.n_pot_peaks+1)  # Probabilidades de los cuantiles empíricos
-        gpd_probs = stats.genpareto.cdf(self.pot_data_sorted, c=self.gpd_parameters[2], loc=self.opt_threshold, scale=self.gpd_parameters[1])
+        probabilities = (np.arange(1, self.n_pot + 1) - 0.5) / (self.n_pot+1)  # Probabilidades de los cuantiles empíricos
+        gpd_probs = stats.genpareto.cdf(self.pot_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
