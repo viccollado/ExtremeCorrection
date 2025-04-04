@@ -74,7 +74,7 @@ def nll_gpd(data, p):
     # Weibull-Frechet 
     else:
         expr = 1+xi*((data-u)/sigma)
-        expr = np.maximum(expr, 1e-5)
+        # expr = np.maximum(expr, 1e-5)
         return (N*np.log(sigma) + (1+1/xi)*np.sum(np.log(expr)))
     
 

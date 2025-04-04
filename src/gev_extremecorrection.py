@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import scipy.stats as stats
-from gev_utils import dq_gev, nll_gev
+from .gev_utils import dq_gev, nll_gev
 import numdifftools as ndt
 
 

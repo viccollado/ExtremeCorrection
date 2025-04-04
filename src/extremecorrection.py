@@ -6,9 +6,9 @@ import scipy.stats as stats
 import numdifftools as ndt
 
 # GEV, GPD and POT utils
-from gev_utils import dq_gev, nll_gev
-from gpd_utils import dq_gpd, nll_gpd
-from pot_utils import dq_pot, q_pot, nll_pot, cdf_pot
+from .gev_utils import dq_gev, nll_gev
+from .gpd_utils import dq_gpd, nll_gpd
+from .pot_utils import dq_pot, q_pot, nll_pot, cdf_pot
 
 # Optimal Threshold
 from src.optimal_threshold_studentized import OptimalThreshold
@@ -44,7 +44,7 @@ class ExtremeCorrection():
         self.pit_data_sorted = np.sort(self.pit_data)                                                               # Sorted point-in-time data (hourly, daily...)
 
         self.time_hist = self.data_hist[self.time_var].values   # pd.Datetime variable
-        self.time_interval_hist = (self.data_hist[self.time_var].max() - self.data_hist[self.time_var].min()).total_seconds() / (365.25 * 24 * 60 * 60)
+        self.time_interval_hist = self.data_hist[self.yyyy_var].max() - self.data_hist[self.yyyy_var].min()
 
         self.n_year_peaks = self.max_data.shape[0]      # Nº of years
         self.n_pit = self.pit_data.shape[0]             # Nº of point-in-time observations
@@ -59,7 +59,7 @@ class ExtremeCorrection():
         self.sim_pit_data_sorted = np.sort(self.sim_pit_data)                                                           # Sorted simulated point-in-time data
 
         self.time_sim = self.data_sim[self.time_var].values     # pd.Datetime of simulated data
-        self.time_interval_sim = (self.data_sim[self.time_var].max() - self.data_sim[self.time_var].min()).total_seconds() / (365.25 * 24 * 60 * 60)
+        self.time_interval_sim = self.data_sim[self.yyyy_var].max() - self.data_sim[self.yyyy_var].min()
 
         self.n_sim_year_peaks = self.sim_max_data.shape[0]   # Nº of simulated years
         self.n_sim_pit = self.sim_pit_data.shape[0]          # Nº of simulated point-in-time observations
@@ -1147,7 +1147,7 @@ class ExtremeCorrection():
             new_max_idx_sim_int[i_year] = self.data_sim[self.var].index.get_indexer(self.sim_max_data_idx_intervals[i_year])
             annual_maxima_corr_sim_int[i_year] = self.sim_pit_data_corrected[new_max_idx_sim_int[i_year]]
             ecdf_annual_maxima_sim_int[i_year] = np.arange(1,len(annual_maxima_corr_sim_int[i_year])+1)/(len(annual_maxima_corr_sim_int[i_year])+1)
-            T_ecdf_annual_maxima_sim_int[i_year] = 1/(1-ecdf_annual_maxima_sim_int[i_year])*(self.n_peaks/len(self.sim_max_data_idx_intervals[i_year]))  
+            T_ecdf_annual_maxima_sim_int[i_year] = 1/(1-ecdf_annual_maxima_sim_int[i_year])*(self.n_year_peaks/len(self.sim_max_data_idx_intervals[i_year]))  
             # No corrected
             annual_maxima_nocorr_sim_int[i_year] = self.data_sim[self.var][self.sim_max_data_idx_intervals[i_year]].values
             ecdf_annual_maxima_nocorr_sim_int[i_year] = np.arange(1,len(annual_maxima_nocorr_sim_int[i_year])+1)/(len(annual_maxima_nocorr_sim_int[i_year])+1)
