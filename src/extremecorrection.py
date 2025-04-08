@@ -22,6 +22,7 @@ class ExtremeCorrection():
             data_sim: pd.DataFrame,
             config: dict,
             pot_config: dict,
+            method: str = None,
             conf_level: float = 0.95,
             tolerance: float = None
     ):
@@ -77,8 +78,8 @@ class ExtremeCorrection():
         self._validate_pot_config()
 
         # Choose the method GEV or GPD
-
         self._define_method(tolerance=tolerance)
+        self.method = method
 
         # Initializa distribution parameters
         # If Annual Maxima (location, scale, xi); If POT (threshold, scale, xi)
@@ -186,10 +187,10 @@ class ExtremeCorrection():
         self.sim_poiss_parameter = self.n_pot_sim / self.time_interval_sim  # Poisson parameter of historical dataset
 
         poiss_diff = np.abs(self.sim_poiss_parameter - self.poiss_parameter)
-        if poiss_diff < tolerance:
-            self.method = 'POT'
-        else:
-            self.method = 'AnnMax'
+        # if poiss_diff < tolerance:
+        #     self.method = 'POT'
+        # else:
+        #     self.method = 'AnnMax'
 
         print(f"Applying correction to {self.method}. Poisson parameters difference: {poiss_diff}")
 
