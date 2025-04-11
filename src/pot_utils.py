@@ -48,7 +48,7 @@ def dq_pot(F, u, lam, sigma, gamma):
 
     return Dq
 
-def nll_pot(data, p):
+def nll_pot(data, n_years, p):
     """
     Negative Loglikelihood of Stationary POT distribution.
     Usefull to compute the variance-covariance matrix using the hessian from numdifftools
@@ -67,7 +67,6 @@ def nll_pot(data, p):
     sigma = p[2]   # Scale
     xi = p[3]      # Shape
 
-    n = len(data)
     exceedances = data[data > u] 
     N = len(exceedances)
 
@@ -76,13 +75,13 @@ def nll_pot(data, p):
     if np.abs(xi) < 1e-8:
         expr = (exceedances-u)/sigma
         expr = np.maximum(expr, 1e-5)
-        return (- N*np.log(lam) + n*lam + N*np.log(sigma) + np.sum(expr))
+        return (- N*np.log(lam) + n_years*lam + N*np.log(sigma) + np.sum(expr))
 
     # Weibull-Frechet 
     else:
         expr = 1+xi*((exceedances-u)/sigma)
         expr = np.maximum(expr, 1e-5)
-        return (- N*np.log(lam) + n*lam + N*np.log(sigma) + (1+1/xi)*np.sum(np.log(expr)))
+        return (- N*np.log(lam) + n_years*lam + N*np.log(sigma) + (1+1/xi)*np.sum(np.log(expr)))
     
 
 def cdf_pot(data, u, lam, sigma, gamma):

@@ -63,7 +63,9 @@ def nll_gpd(data, p):
     sigma = p[1]   # Scale
     xi = p[2]      # Shape
 
-    N = len(data)
+    # N = len(data)
+    exceedances = data[data > u] 
+    N = len(exceedances)
     
     # Gumbel 
     if np.abs(xi) < 1e-8:
