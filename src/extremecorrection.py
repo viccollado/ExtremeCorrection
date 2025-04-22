@@ -9,6 +9,7 @@ import numdifftools as ndt
 from .gev_utils import dq_gev, nll_gev
 from .gpd_utils import dq_gpd, nll_gpd
 from .pot_utils import dq_pot, q_pot, nll_pot, cdf_pot
+from .constants import *
 
 # Optimal Threshold
 from src.optimal_threshold_studentized import OptimalThreshold
@@ -192,7 +193,7 @@ class ExtremeCorrection():
         # else:
         #     self.method = 'AnnMax'
 
-        print(f"Applying correction to {self.method}. Poisson parameters difference: {poiss_diff}")
+        print(f"Poisson parameters difference: {poiss_diff}")
 
     def obtain_pots(
             self, 
@@ -295,7 +296,7 @@ class ExtremeCorrection():
         fig = self.gev_qqplot()
         if save:
             if self.folder:  # Ensure folder is specified
-                plt.savefig(f"{self.folder}/QQPlot.png", dpi=300)
+                plt.savefig(f"{self.folder}/QQPlot.png", dpi=300, bbox_inches='tight')
             else:
                 print("Warning: No folder path specified in config. Saving skipped.")
         plt.close(fig)
@@ -304,7 +305,7 @@ class ExtremeCorrection():
         fig = self.gev_ppplot()
         if save:
             if self.folder:
-                plt.savefig(f"{self.folder}/PPPlot.png", dpi=300)
+                plt.savefig(f"{self.folder}/PPPlot.png", dpi=300, bbox_inches='tight')
             else:
                 print("Warning: No folder path specified in config. Saving skipped.")
         plt.close(fig)
@@ -317,12 +318,12 @@ class ExtremeCorrection():
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
-        plt.scatter(gev_quantiles, self.max_data_sorted, label="Datos vs GEV", alpha=0.7)
-        plt.plot(gev_quantiles, gev_quantiles, 'r--', label="y = x (Referencia)")
+        plt.scatter(gev_quantiles, self.max_data_sorted, label="Data vs GEV", alpha=0.7)
+        plt.plot(gev_quantiles, gev_quantiles, 'r--', label="y = x (Reference)")
 
         # Etiquetas
-        plt.xlabel("Cuantiles Teóricos (GEV ajustada)")
-        plt.ylabel("Cuantiles Empíricos (Datos)")
+        plt.xlabel("Theoretical Quantiles (Fitted GEV)", fontsize=LABEL_FONTSIZE)
+        plt.ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
         # plt.title("QQ-plot: Ajuste de la GEV a los Datos")
         # plt.legend()
         plt.grid()
@@ -337,12 +338,12 @@ class ExtremeCorrection():
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
-        plt.scatter(probabilities, gev_probs, label="Empírico vs GEV", alpha=0.7)
-        plt.plot([0, 1], [0, 1], 'r--', label="y = x (Referencia)")  # Reference line
+        plt.scatter(gev_probs, probabilities, label="Empirical vs GEV", alpha=0.7)
+        plt.plot([0, 1], [0, 1], 'r--', label="y = x (Reference)")  # Reference line
 
         # Etiquetas
-        plt.xlabel("Probabilidades Empíricas")
-        plt.ylabel("Probabilidades Teóricas (GEV)")
+        plt.xlabel("Theoretical Probabilities (GEV)", fontsize=LABEL_FONTSIZE)
+        plt.ylabel("Empirical Probabilities", fontsize=LABEL_FONTSIZE)
         # plt.title("PP-plot: Ajuste de la GEV a los Datos")
         # plt.legend()
         plt.grid()
@@ -355,7 +356,7 @@ class ExtremeCorrection():
         fig = self.gpd_qqplot()
         if save:
             if self.folder:  # Ensure folder is specified
-                plt.savefig(f"{self.folder}/QQPlot.png", dpi=300)
+                plt.savefig(f"{self.folder}/QQPlot.png", dpi=300, bbox_inches='tight')
             else:
                 print("Warning: No folder path specified in config. Saving skipped.")
         plt.close(fig)
@@ -364,7 +365,7 @@ class ExtremeCorrection():
         fig = self.gpd_ppplot()
         if save:
             if self.folder:
-                plt.savefig(f"{self.folder}/PPPlot.png", dpi=300)
+                plt.savefig(f"{self.folder}/PPPlot.png", dpi=300, bbox_inches='tight')
             else:
                 print("Warning: No folder path specified in config. Saving skipped.")
         plt.close(fig)
@@ -377,12 +378,12 @@ class ExtremeCorrection():
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
-        plt.scatter(gpd_quantiles, self.pot_data_sorted, label="Datos vs GPD", alpha=0.7)
-        plt.plot(gpd_quantiles, gpd_quantiles, 'r--', label="y = x (Referencia)")
+        plt.scatter(gpd_quantiles, self.pot_data_sorted, label="Data vs GPD", alpha=0.7)
+        plt.plot(gpd_quantiles, gpd_quantiles, 'r--', label="y = x (Reference)")
 
         # Etiquetas
-        plt.xlabel("Cuantiles Teóricos (GPD ajustada)")
-        plt.ylabel("Cuantiles Empíricos (Datos)")
+        plt.xlabel("Theoretical Quantiles (Fitted GPD)", fontsize=LABEL_FONTSIZE)
+        plt.ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
         # plt.title("QQ-plot: Ajuste de la GEV a los Datos")
         # plt.legend()
         plt.grid()
@@ -397,12 +398,12 @@ class ExtremeCorrection():
 
         # Crear el QQ-plot
         fig = plt.figure(figsize=(7, 7))
-        plt.scatter(probabilities, gpd_probs, label="Empírico vs GPD", alpha=0.7)
+        plt.scatter(gpd_probs, probabilities, label="Empírico vs GPD", alpha=0.7)
         plt.plot([0, 1], [0, 1], 'r--', label="y = x (Referencia)")  # Reference line
 
         # Etiquetas
-        plt.xlabel("Probabilidades Empíricas")
-        plt.ylabel("Probabilidades Teóricas (GPD)")
+        plt.xlabel("Theoretical Probabilities (GPD)", fontsize=LABEL_FONTSIZE)
+        plt.ylabel("Empirical Probabilities", fontsize=LABEL_FONTSIZE)
         # plt.title("PP-plot: Ajuste de la GEV a los Datos")
         # plt.legend()
         plt.grid()
@@ -588,7 +589,7 @@ class ExtremeCorrection():
 
         # Confidence Intervals
         dqpot = dq_pot(self.ecdf_annmax_probs_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
-        aux_fun = lambda x: nll_pot(self.pit_data, x)
+        aux_fun = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
         hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
         hessians_gpd_poiss = hess([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
         invI0_gpd_poiss = np.linalg.inv(hessians_gpd_poiss)   
@@ -626,18 +627,19 @@ class ExtremeCorrection():
             ax.semilogx(self.T_annmax, self.max_data_sorted, color="red", linewidth=0, marker='+',markersize=3, label='Annual Maxima')
 
 
-        ax.set_xlabel("Return Periods (Years)")
-        ax.set_ylabel(f"{self.var}")
-        ax.set_title(f"Historical Return Period ({self.var})")
+        ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
+        # ax.set_title(f"Historical Return Period ({self.var})", fontsize=TITLE_FONTSIZE)
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=10000)
-        ax.set_ylim(0, np.max(np.concatenate([self.x_vals_gpd_poiss_hist, self.x_vals_gpd_hist]) +0.5))
-        ax.legend()
+        # ax.set_xlim(right=10000)
+        ax.set_xlim(left=0.5, right=self.n_year_peaks+100)
+        ax.set_ylim(4, np.max(np.concatenate([self.x_vals_gpd_poiss_hist, self.x_vals_gpd_hist]) +2))
+        ax.legend(fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def _annmax_return_period_plot(
@@ -712,17 +714,17 @@ class ExtremeCorrection():
         ax.semilogx(self.T_ev_corrected_hist, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
         ax.semilogx(self.T_ev_corrected_hist, self.stdlo_gev, color = "black",linestyle='dotted')
 
-        ax.set_xlabel("Return Periods (Years)")
-        ax.set_ylabel(f"{self.var}")
+        ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
         ax.set_title(f"Historical Return Period ({self.var})")
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
         ax.set_xlim(right=10000)
-        ax.legend()
+        ax.legend(fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def apply_sim_correction(
@@ -886,10 +888,10 @@ class ExtremeCorrection():
             self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]
         )
         self.T_annmax_corrected_sim = 1.0 / (1.0 - ecdf_annmax_probs_corrected_sim) #*(40/self.n_peaks)
-
+        
         # Confidence Intervals
         dqpot_sim = dq_pot(self.ecdf_annmax_probs_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
-        aux_fun_sim = lambda x: nll_pot(self.pit_data, x)
+        aux_fun_sim = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
         hess_sim = ndt.Hessian(aux_fun_sim, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
         hessians_gpd_poiss_sim = hess_sim([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
         invI0_gpd_poiss_sim = np.linalg.inv(hessians_gpd_poiss_sim)   
@@ -929,17 +931,19 @@ class ExtremeCorrection():
 
 
     
-        ax.set_xlabel("Return Periods (Years)")
-        ax.set_ylabel(f"{self.var}")
-        ax.set_title(f"Simulated Return Period ({self.var})")
+        ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
+        # ax.set_title(f"Simulated Return Period ({self.var})", fontsize=TITLE_FONTSIZE)
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=10000)
-        ax.legend(loc='upper left')
+        # ax.set_xlim(right=10000)
+        ax.set_xlim(left=0.5, right=self.n_sim_year_peaks+100)
+        ax.set_ylim(bottom=4)
+        ax.legend(loc='upper left', fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def _annmax_sim_return_period_plot(
@@ -1003,17 +1007,17 @@ class ExtremeCorrection():
         ax.semilogx(T_ev_corrected_sim, stdup_gev_sim, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
         ax.semilogx(T_ev_corrected_sim, stdlo_gev_sim, color = "black",linestyle='dotted')
 
-        ax.set_xlabel("Return Periods (Years)")
-        ax.set_ylabel(f"{self.var}")
-        ax.set_title(f"Simulated Return Period ({self.var})")
+        ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
+        # ax.set_title(f"Simulated Return Period ({self.var})", fontsize=TITLE_FONTSIZE)
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
         ax.set_xlim(right=10000)
-        ax.legend(loc='upper left')
+        ax.legend(loc='upper left', fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def interval_return_period_plot(
@@ -1094,36 +1098,38 @@ class ExtremeCorrection():
         
         
 
-        ax1.set_xlabel("Return Periods (Years)")
-        ax1.set_ylabel(f"{self.var}")
+        ax1.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax1.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
         ax1.set_xscale('log')
         ax1.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax1.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        leg1 = ax1.legend(loc='upper left', ncol=2)
+        leg1 = ax1.legend(loc='upper left', ncol=1, fontsize=LEGEND_FONTSIZE)
         for lh in leg1.legend_handles:
             lh.set_alpha(1)
         ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax1.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax1.set_xlim(right=50)
-        ax1.set_title("No Corrected")
+        ax1.set_xlim(right=self.n_year_peaks+50)
+        ax1.set_ylim(bottom=6)
+        ax1.set_title("No Corrected", fontsize=LABEL_FONTSIZE)
 
 
-        ax2.set_xlabel("Return Periods (Years)")
-        ax2.set_ylabel(f"{self.var}")
+        ax2.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax2.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
         ax2.set_xscale('log')
         ax2.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        leg2 = ax2.legend(loc='upper left', ncol=2)
+        leg2 = ax2.legend(loc='upper left', ncol=1, fontsize=LEGEND_FONTSIZE)
         for lh in leg2.legend_handles:
             lh.set_alpha(1)
         ax2.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax2.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax2.set_xlim(right=50)
-        ax2.set_title("Corrected")
+        ax2.set_xlim(right=self.n_year_peaks+50)
+        ax2.set_ylim(bottom=6)
+        ax2.set_title("Corrected", fontsize=LABEL_FONTSIZE)
 
         fig.tight_layout()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def _annmax_interval_return_period_plot(
@@ -1194,35 +1200,35 @@ class ExtremeCorrection():
         
         
 
-        ax1.set_xlabel("Return Periods (Years)")
-        ax1.set_ylabel(f"{self.var}")
+        ax1.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax1.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
         ax1.set_xscale('log')
         ax1.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax1.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        leg1 = ax1.legend(loc='upper left', ncol=2)
+        leg1 = ax1.legend(loc='best', ncol=1, fontsize=LEGEND_FONTSIZE)
         for lh in leg1.legend_handles:
             lh.set_alpha(1)
         ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax1.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax1.set_xlim(right=50)
-        ax1.set_title("No Corrected")
+        ax1.set_xlim(right=self.n_year_peaks)
+        ax1.set_title("No Corrected", fontsize=LABEL_FONTSIZE)
 
 
-        ax2.set_xlabel("Return Periods (Years)")
-        ax2.set_ylabel(f"{self.var}")
+        ax2.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
+        ax2.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
         ax2.set_xscale('log')
         ax2.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        leg2 = ax2.legend(loc='upper left', ncol=2)
+        leg2 = ax2.legend(loc='best', ncol=1, fontsize=LEGEND_FONTSIZE)
         for lh in leg2.legend_handles:
             lh.set_alpha(1)
         ax2.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax2.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax2.set_xlim(right=50)
-        ax2.set_title("Corrected")
+        ax2.set_xlim(right=self.n_year_peaks)
+        ax2.set_title("Corrected", fontsize=LABEL_FONTSIZE)
 
         fig.tight_layout()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300)
+            plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
