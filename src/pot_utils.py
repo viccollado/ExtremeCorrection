@@ -1,6 +1,6 @@
 import numpy as np
 
-def q_pot(F, u, lam, sigma, gamma):
+def q_pot(F, p, lam):
     """
     Calculate the quantile of POT for a certain probability
 
@@ -14,11 +14,14 @@ def q_pot(F, u, lam, sigma, gamma):
     Returns:
         _type_: _description_
     """
-    if np.abs(gamma) < 1e-8:
-        q = u - sigma*np.log(-np.log(F)(lam))
+    u = p[0]
+    sigma = p[1]
+    xi = p[2]
+    if np.abs(xi) < 1e-5:
+        q = u - sigma*np.log(-np.log(F)/(lam))
 
     else:
-        q = u - (1-(-np.log(F)/lam)**(-gamma))*sigma/gamma
+        q = u - (1-(-np.log(F)/lam)**(-xi))*sigma/xi
 
     return q
 
@@ -105,3 +108,40 @@ def cdf_pot(data, u, lam, sigma, gamma):
     else:
         expr = 1+gamma*((data-u)/sigma)
         return np.exp(-lam*expr**(-1/gamma))
+    
+def aux_nll_pot(data, n_years, p, lam):
+    """
+    Negative Loglikelihood of Stationary POT distribution.
+    Usefull to compute the variance-covariance matrix using the hessian from numdifftools
+
+    Args:
+        data (_type_): data
+        p (list): parameters of POT distribution [threshold, scale, shape] 
+
+    Returns:
+        loglikelihood (np.array): negative loglikelihood value
+    """
+
+
+    u = p[0]       # Location
+    sigma = p[1]   # Scale
+    xi = p[2]      # Shape
+
+    exceedances = data[data > u] 
+    N = len(exceedances)
+
+    
+    # Gumbel 
+    if np.abs(xi) < 1e-8:
+        print(sigma)
+        expr = (exceedances-u)/sigma
+        expr = np.maximum(expr, 1e-5)
+        return (- N*np.log(lam) + n_years*lam + N*np.log(sigma) + np.sum(expr))
+
+    # Weibull-Frechet 
+    else:
+        expr = 1+xi*((exceedances-u)/sigma)
+        expr = np.maximum(expr, 1e-5)
+        return (- N*np.log(lam) + n_years*lam + N*np.log(sigma) + (1+1/xi)*np.sum(np.log(expr)))
+    
+

@@ -7,6 +7,7 @@ Data/DatosHs_SS/LWT_ss_sim.nc
 Data/DatosHs_SS/FWT_Hs_sim.nc
 src/__pycache__/
 Figures/
+OldFigures/
 OptimalThresholdSelection/__pycache__/optimal_threshold_studentized.cpython-312.pyc
 OptimalThresholdSelection/__pycache__/threshold_peak_extraction.cpython-312.pyc
 PaperMonteCarloStructuralSafety/

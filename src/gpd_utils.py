@@ -1,6 +1,6 @@
 import numpy as np
 
-def quantile_GPD(F, u, sigma, gamma):
+def q_gpd(F, p):
     """
     Calculate the quantile of GPD for a certain probability
 
@@ -13,13 +13,16 @@ def quantile_GPD(F, u, sigma, gamma):
     Returns:
         _type_: _description_
     """
+    u = p[0]
+    sigma = p[1]
+    xi = p[2]
     # Gumbel case
-    if np.abs(gamma) < 1e-8:
+    if np.abs(xi) < 1e-8:
         q = u - sigma*np.log(1-np.log(F))
 
     # General case
     else:
-        q = u - (1-(1-F)**(-gamma))*sigma/gamma
+        q = u - (1-(1-F)**(-xi))*sigma/xi
 
     return q
 
@@ -76,7 +79,7 @@ def nll_gpd(data, p):
     # Weibull-Frechet 
     else:
         expr = 1+xi*((data-u)/sigma)
-        # expr = np.maximum(expr, 1e-5)
+        expr = np.maximum(expr, 1e-5)
         return (N*np.log(sigma) + (1+1/xi)*np.sum(np.log(expr)))
     
 

@@ -6,10 +6,13 @@ import scipy.stats as stats
 import numdifftools as ndt
 
 # GEV, GPD and POT utils
-from .gev_utils import dq_gev, nll_gev
-from .gpd_utils import dq_gpd, nll_gpd
-from .pot_utils import dq_pot, q_pot, nll_pot, cdf_pot
-from .constants import *
+from .gev_utils import dq_gev, nll_gev, q_gev
+from .gpd_utils import dq_gpd, nll_gpd, q_gpd
+from .pot_utils import dq_pot, q_pot, nll_pot, cdf_pot, aux_nll_pot
+from .constants import LABEL_FONTSIZE, LEGEND_FONTSIZE
+from .proflike import return_proflike, return_proflike_root, return_proflike_root2
+from .gev_proflikelihood import gev_rp_plik
+from .gpd_profilelikelihood import gpdpoiss_rp_plik
 
 # Optimal Threshold
 from src.optimal_threshold_studentized import OptimalThreshold
@@ -45,7 +48,7 @@ class ExtremeCorrection():
         self.pit_data = self.data_hist[self.var].values                                                             # Point-in-time data (hourly, daily...)
         self.pit_data_sorted = np.sort(self.pit_data)                                                               # Sorted point-in-time data (hourly, daily...)
 
-        self.time_hist = self.data_hist[self.time_var].values   # pd.Datetime variable
+        # self.time_hist = self.data_hist[self.time_var].values   # pd.Datetime variable
         self.time_interval_hist = self.data_hist[self.yyyy_var].max() - self.data_hist[self.yyyy_var].min()
 
         self.n_year_peaks = self.max_data.shape[0]      # Nº of years
@@ -60,7 +63,7 @@ class ExtremeCorrection():
         self.sim_pit_data = self.data_sim[self.var].values                                                              # Simulated point-in-time data
         self.sim_pit_data_sorted = np.sort(self.sim_pit_data)                                                           # Sorted simulated point-in-time data
 
-        self.time_sim = self.data_sim[self.time_var].values     # pd.Datetime of simulated data
+        # self.time_sim = self.data_sim[self.time_var].values     # pd.Datetime of simulated data
         self.time_interval_sim = self.data_sim[self.yyyy_var].max() - self.data_sim[self.yyyy_var].min()
 
         self.n_sim_year_peaks = self.sim_max_data.shape[0]   # Nº of simulated years
@@ -165,7 +168,11 @@ class ExtremeCorrection():
             threshold = self.pot_config['init_threshold'],
             plot_flag = self.pot_config['plot_flag'],
             optimize_threshold=True
-        )  
+        ) 
+        # If the correction is applied with exponential
+        # self.opt_threshold = 0.0
+        # self.pot_data = self.pit_data[self.pit_data > 0]
+        # self.pot_data_sorted = np.sort(self.pot_data)
 
         self.n_pot = self.pot_data.size                                 # Nº POTs
         self.poiss_parameter = self.n_pot / self.time_interval_hist     # Poisson parameter of historical dataset
@@ -183,6 +190,9 @@ class ExtremeCorrection():
             plot_flag = self.pot_config['plot_flag'],
             optimize_threshold=False
         )
+        # If the correction is applied with exponential
+        # self.sim_pot_data = self.sim_pit_data[self.sim_pit_data > 0]
+        # self.sim_pot_data_sorted = np.sort(self.sim_pot_data)
 
         self.n_pot_sim = self.sim_pot_data.size                             # Nº simulated POTs
         self.sim_poiss_parameter = self.n_pot_sim / self.time_interval_sim  # Poisson parameter of historical dataset
@@ -252,7 +262,8 @@ class ExtremeCorrection():
 
     def apply_correction(
             self,
-            fit_diag: bool = False
+            fit_diag: bool = False,
+            random_state = 0
     ):
         self.parameters = self.extreme_fit()
 
@@ -260,15 +271,21 @@ class ExtremeCorrection():
             self.plot_diagnostic(save=True)
 
         if self.method == "POT":
-            self._pot_correction()
+            self._pot_correction(random_state)
         elif self.method == "AnnMax":
-            self._annmax_correction()
+            self._annmax_correction(random_state)
 
     def extreme_fit(self):
 
         if self.method == "POT":
             shape_gpd, loc_gpd, scale_gpd = stats.genpareto.fit(self.pot_data-self.opt_threshold, floc = 0)
             return [self.opt_threshold, scale_gpd, shape_gpd]
+
+            # If the correction is applied with the Exponential
+            # shape_gpd, loc_gpd, scale_gpd = stats.genpareto.fit(self.pit_data, floc = 0, fc=0)
+            # loc_expon, scale_expon = stats.expon.fit(self.pot_data, floc = 0)
+            # return [loc_gpd, scale_gpd, shape_gpd]
+            # return [loc_expon, scale_expon, 0.0]
         
         elif self.method == "AnnMax":
             shape_gev, loc_gev, scale_gev = stats.genextreme.fit(self.max_data, 0)
@@ -411,37 +428,48 @@ class ExtremeCorrection():
         return fig
     
     def _pot_correction(
-            self
+            self,
+            random_state
     ):
         
         # POT correction on historical data
         self.ecdf_pot_probs_hist = np.arange(1, self.n_pot + 1) / (self.n_pot + 1)   # ECDF
+        np.random.seed(random_state) # Set the random seed
+        self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot))   # Random Uniform
+
         self.pot_data_corrected = stats.genpareto.ppf(                               # Corrected POTs
-            self.ecdf_pot_probs_hist,
+            self.runif_pot_probs_hist,
             self.parameters[2],
             loc=self.parameters[0],
             scale=self.parameters[1]
         )
 
         # Copy point-in-time data
-        aux_pit_corrected = self.pit_data.copy()
+        # aux_pit_corrected = self.pit_data.copy()
 
         if self.n_pot > 1:
             
-            # Mask to interpolate
-            mask = aux_pit_corrected > self.pot_data_sorted[0]
-            # Clip values to interpolate
-            clipped_vals = np.clip(
-                aux_pit_corrected[mask],
-                self.pot_data_sorted[0],
-                self.pot_data_sorted[-1]
-            )
+            # # Mask to interpolate
+            # mask = aux_pit_corrected > self.pot_data_sorted[0]
+            # # Clip values to interpolate
+            # clipped_vals = np.clip(
+            #     aux_pit_corrected[mask],
+            #     self.pot_data_sorted[0],
+            #     self.pot_data_sorted[-1]
+            # )
 
+            # # Interpolate in the peak range
+            # aux_pit_corrected[mask] = np.interp(
+            #     clipped_vals,           # x-coords to interpolate
+            #     self.pot_data_sorted,   # x-coords of data points
+            #     self.pot_data_corrected # y-coords of data points
+            # )
+            
             # Interpolate in the peak range
-            aux_pit_corrected[mask] = np.interp(
-                clipped_vals,           # x-coords to interpolate
-                self.pot_data_sorted,   # x-coords of data points
-                self.pot_data_corrected # y-coords of data points
+            aux_pit_corrected = np.interp(
+                self.pit_data,           # x-coords to interpolate
+                np.append(min(self.pit_data), self.pot_data_sorted),   # x-coords of data points
+                np.append(min(self.pit_data), self.pot_data_corrected) # y-coords of data points
             )
 
             # Store corrected data
@@ -458,37 +486,47 @@ class ExtremeCorrection():
             Warning("Only 1 POT used in the historical correction")
 
     def _annmax_correction(
-            self
+            self,
+            random_state
     ):
 
         # AnnualMaxima correction on historical data
         self.ecdf_annmax_probs_hist = np.arange(1, self.n_year_peaks + 1) / (self.n_year_peaks + 1) # ECDF
+        np.random.seed(random_state) # Set the random seed
+        self.runif_annmax_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_year_peaks))   # Random Uniform
         self.max_data_corrected = stats.genextreme.ppf(                                      # Corrected Annual Maxima
-            self.ecdf_annmax_probs_hist,
+            self.runif_annmax_probs_hist,
             self.parameters[2],
             loc=self.parameters[0],
             scale=self.parameters[1]
         )
 
         # Copy point-in-time data
-        aux_pit_corrected = self.pit_data.copy()
+        # aux_pit_corrected = self.pit_data.copy()
 
         if self.n_year_peaks > 1:
             
-            # Mask to interpolate
-            mask = aux_pit_corrected > self.max_data_sorted[0]
-            # Clip values to interpolate
-            clipped_vals = np.clip(
-                aux_pit_corrected[mask],
-                self.max_data_sorted[0],
-                self.max_data_sorted[-1]
-            )
+            # # Mask to interpolate
+            # mask = aux_pit_corrected > self.max_data_sorted[0]
+            # # Clip values to interpolate
+            # clipped_vals = np.clip(
+            #     aux_pit_corrected[mask],
+            #     self.max_data_sorted[0],
+            #     self.max_data_sorted[-1]
+            # )
 
+            # # Interpolate in the peak range
+            # aux_pit_corrected[mask] = np.interp(
+            #     clipped_vals,           # x-coords to interpolate
+            #     self.max_data_sorted,   # x-coords of data points
+            #     self.max_data_corrected # y-coords of data points
+            # )
+            
             # Interpolate in the peak range
-            aux_pit_corrected[mask] = np.interp(
-                clipped_vals,           # x-coords to interpolate
-                self.max_data_sorted,   # x-coords of data points
-                self.max_data_corrected # y-coords of data points
+            aux_pit_corrected = np.interp(
+                self.pit_data,           # x-coords to interpolate
+                np.append(min(self.pit_data), self.max_data_sorted),   # x-coords of data points
+                np.append(min(self.pit_data), self.max_data_corrected) # y-coords of data points
             )
 
             # Store corrected data
@@ -518,16 +556,105 @@ class ExtremeCorrection():
                 show_uncorrected=show_uncorrected
             )
 
+
+    def _pot_ci_return_period(self):
+        # self.ci_T_years = np.array([1.1, 1.5, 2, 5, 7.5, 10, 20, 35, 50, 75, 100, 200, 500, 1000, 5000, 10000])
+        self.ci_T_years = np.array([1.1, 2, 5, 10, 20, 50, 100, 500, 1000, 5000, 10000])
+        # probs = 1 - 1 / self.ci_T_years  # Convert to exceedance probabilities
+
+        # Optimal Negative Loglikelihood
+        nll_opt = nll_pot(self.pit_data, n_years=self.n_year_peaks, p=[self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
+
+        params = [self.parameters[0], self.parameters[1], self.parameters[2], self.poiss_parameter]
+        lower_pot_ci_return = np.zeros_like(self.ci_T_years)
+        upper_pot_ci_return = np.zeros_like(self.ci_T_years)
+        
+        for idx, year in enumerate(self.ci_T_years):
+            # Initial bounds for confidence interval based on return period
+            xlow = min(0, -year//10)    # Decrease lower bound for larger return periods
+            xup = max(500, year * 5)    # Increase upper bound for larger return periods
+            
+            try:
+                conf_int = gpdpoiss_rp_plik(params, nll_opt, self.pit_data, m=year, 
+                                        n_years=self.n_year_peaks, 
+                                        xlow=xlow, xup=xup,
+                                        plot=False, nint=500, conf=self.conf)
+                lower_pot_ci_return[idx] = conf_int[0]
+                upper_pot_ci_return[idx] = conf_int[1]
+            except ValueError:
+                # If bounds were insufficient, try with wider bounds
+                xup = xup * 2
+                try:
+                    conf_int = gpdpoiss_rp_plik(params, nll_opt, self.pit_data, m=year, 
+                                            n_years=self.n_year_peaks, 
+                                            xlow=xlow, xup=xup, 
+                                            plot=False, nint=500, conf=self.conf)
+                    lower_pot_ci_return[idx] = conf_int[0]
+                    upper_pot_ci_return[idx] = conf_int[1]
+                except ValueError as e:
+                    print(f"Warning: Could not find confidence interval for return period {year}. Error: {str(e)}")
+                    # Set to NaN if we can't find valid bounds
+                    lower_pot_ci_return[idx] = np.nan
+                    upper_pot_ci_return[idx] = np.nan
+
+        # # GPD -----------------------------------------------
+        # def nll_gpd_fixed(p, data):  # p = [sigma, shape]
+        #     return nll_gpd(data, [self.parameters[0], p[0], p[1]])  # threshold fixed
+        
+        # gpd_ll_max_value = - nll_gpd(self.pot_data, self.parameters)
+
+        # def q_gpd_fixed(prob, p):  # p = [sigma, shape]
+        #     return q_gpd(prob, [self.parameters[0], p[0], p[1]])
+
+        # lower_gpd_ci_return, upper_gpd_ci_return = return_proflike_root2(
+        #     nll_fun=nll_gpd_fixed,
+        #     init_params=self.parameters[1:],  # [sigma, shape]
+        #     data=self.pot_data,
+        #     quantile_fun=q_gpd_fixed,
+        #     probs=probs,
+        #     ll_max_value=gpd_ll_max_value,
+        #     dist='gpd',
+        #     sig_level=1 - self.conf
+        # )
+
+        # # POT -----------------------------------------------
+        # def nll_pot_fixed(p, data):  # p = [scale, shape]
+        #     return nll_pot(data, self.n_year_peaks, [self.parameters[0], self.poiss_parameter, p[0], p[1]])
+        
+        # pot_ll_max_value = -nll_pot(self.pit_data, self.n_year_peaks, [self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
+
+        # def q_pot_fixed(prob, p):  # p = [scale, shape]
+        #     return q_pot(prob, [self.parameters[0], p[0], p[1]], self.poiss_parameter)
+
+        # lower_pot_ci_return, upper_pot_ci_return = return_proflike_root2(
+        #     nll_fun=nll_pot_fixed,
+        #     init_params=self.parameters[1:],  # [scale, shape]
+        #     data=self.pit_data,
+        #     quantile_fun=q_pot_fixed,
+        #     probs=probs,
+        #     ll_max_value=pot_ll_max_value,
+        #     dist='pot',
+        #     sig_level=1 - self.conf
+        # )
+
+        # Store results
+        # self.lower_gpd_ci_return = lower_gpd_ci_return
+        # self.upper_gpd_ci_return = upper_gpd_ci_return
+        self.lower_pot_ci_return = lower_pot_ci_return
+        self.upper_pot_ci_return = upper_pot_ci_return
+        
     def _pot_return_period_plot(
             self, 
             show_corrected=False, 
             show_uncorrected=True
     ):
         
-
+        """ ONLY PLOT AM USING GPD-POISSON MODEL
         ###### POTs ###### 
         # GPD fit over a grid of x-values
         self.x_vals_gpd_hist = np.linspace(self.pot_data_corrected[0], self.pot_data_corrected[-1], 1000)
+        # self.x_vals_gpd_hist = np.linspace(self.pot_data_corrected[0], 10000, 1000)
+        
         # Return period from GPD fit
         gpd_probs_fitted = stats.genpareto.cdf(
             self.x_vals_gpd_hist, 
@@ -554,77 +681,95 @@ class ExtremeCorrection():
         # POT (uncorrected)
         self.T_pot_hist = 1.0 / (1.0 - self.ecdf_pot_probs_hist) / self.poiss_parameter
 
+        # self._pot_ci_return_period()
+        # self.x_vals_gpd_hist = q_gpd(1 - 1 / self.ci_T_years, self.parameters)
+
         # Confidence intervals for GPD
-        dqgpd = dq_gpd(self.ecdf_pot_probs_hist, self.parameters[0], self.parameters[1], self.parameters[2])
+        dqgpd = dq_gpd(gpd_probs_fitted, self.parameters[0], self.parameters[1], self.parameters[2])
         aux_fun = lambda x: nll_gpd(self.pot_data, x)
         hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
         hessians_gpd = hess([self.parameters[0], self.parameters[1], self.parameters[2]])   # Hessian matrix
         invI0_gpd = np.linalg.inv(hessians_gpd)     # Hessian inverse
+        self.invI0_gpd=invI0_gpd
         stdDq_gpd = np.sqrt(np.sum((dqgpd.T@invI0_gpd) * dqgpd.T, axis=1))
-        self.stdup_gpd = self.pot_data_corrected + stdDq_gpd*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        self.stdlo_gpd = self.pot_data_corrected - stdDq_gpd*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        
+        self.stdup_gpd = self.x_vals_gpd_hist + stdDq_gpd*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        self.stdlo_gpd = self.x_vals_gpd_hist - stdDq_gpd*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        """
         ###### Daily Data ######
         # Daily corrected data
         ecdf_pt_probs_corrected_hist = np.arange(1, self.n_pit + 1) / (self.n_pit + 1)
         T_pt_corrected_hist = 1.0 / (1.0 - ecdf_pt_probs_corrected_hist) / self.freq #/ n_return_period[wt] 
         
-
+        # Compute Estimated Return Periods and Confidence Intervals
+        self._pot_ci_return_period()
+        self.x_vals_gpd_poiss_hist = q_pot(1 - 1 / self.ci_T_years, self.parameters, self.poiss_parameter)
+        
         ###### Annual Maxima GPD-Poisson ######
         self.ecdf_annmax_probs_hist = np.arange(1, self.n_year_peaks + 1) / (self.n_year_peaks + 1)
         self.T_annmax = 1 / (1-self.ecdf_annmax_probs_hist)
 
         # GPD-Poisson fit over a grid of x-values
-        self.x_vals_gpd_poiss_hist = np.linspace(self.max_data_corrected_sort[0], self.max_data_corrected_sort[-1], 1000)
+        # self.x_vals_gpd_poiss_hist = np.linspace(self.max_data_corrected_sort[0], self.max_data_corrected_sort[-1], 1000)
+        # self.x_vals_gpd_poiss_hist = np.linspace(self.max_data_corrected_sort[0], 10000, 1000)
+        # self.x_vals_gpd_poiss_hist =  q_pot(1 - 1 / self.ci_T_years, self.parameters, self.poiss_parameter)
         # Return period from GPD-Poisson fit
-        gpd_poiss_probs_fitted = cdf_pot(self.x_vals_gpd_poiss_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
-        self.T_gpd_poiss_fitted = 1.0 / (1.0 - gpd_poiss_probs_fitted)
+        # gpd_poiss_probs_fitted = cdf_pot(self.x_vals_gpd_poiss_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
+        # self.T_gpd_poiss_fitted = 1.0 / (1.0 - gpd_poiss_probs_fitted)
 
         # GPD-Poisson Corrected peaks: re-check CDF and return periods
         ecdf_annmax_probs_corrected_hist = cdf_pot(
-            q_pot(self.ecdf_annmax_probs_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]),
+            q_pot(self.ecdf_annmax_probs_hist, self.parameters, self.poiss_parameter),
             self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]
         )
         self.T_annmax_corrected_hist = 1.0 / (1.0 - ecdf_annmax_probs_corrected_hist) #*(40/self.n_peaks)
+        
 
-        # Confidence Intervals
-        dqpot = dq_pot(self.ecdf_annmax_probs_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
-        aux_fun = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
-        hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
-        hessians_gpd_poiss = hess([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
-        invI0_gpd_poiss = np.linalg.inv(hessians_gpd_poiss)   
-        stdDq_gpd_poiss = np.sqrt(np.sum((dqpot.T@invI0_gpd_poiss) * dqpot.T, axis=1)) 
-        self.stdup_gpd_poiss = q_pot(ecdf_annmax_probs_corrected_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]) + stdDq_gpd_poiss*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        self.stdlo_gpd_poiss = q_pot(ecdf_annmax_probs_corrected_hist, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]) - stdDq_gpd_poiss*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        # # Confidence Intervals
+        # dqpot = dq_pot(gpd_poiss_probs_fitted, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
+        # aux_fun = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
+        # hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
+        # hessians_gpd_poiss = hess([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
+        # invI0_gpd_poiss = np.linalg.inv(hessians_gpd_poiss)   
+        # stdDq_gpd_poiss = np.sqrt(np.sum((dqpot.T@invI0_gpd_poiss) * dqpot.T, axis=1)) 
+        # self.stdup_gpd_poiss = q_pot(gpd_poiss_probs_fitted, [self.parameters[0], self.parameters[1], self.parameters[2]], self.poiss_parameter) + stdDq_gpd_poiss*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        # self.stdlo_gpd_poiss = q_pot(gpd_poiss_probs_fitted, [self.parameters[0], self.parameters[1], self.parameters[2]], self.poiss_parameter) - stdDq_gpd_poiss*stats.norm.ppf(1-(1-self.conf)/2,0,1)
 
 
         ### Gráfico
         fig = plt.figure(figsize=(12,8))
         ax= fig.add_subplot()
-        # Fitted GPD
-        ax.semilogx(self.T_gpd_fitted, np.sort(self.x_vals_gpd_hist), color = 'orange',linestyle='dashed', label='Fitted GPD')
-        # Confidence interval for fitted GPD
-        ax.semilogx(self.T_ev_corrected_hist, self.stdup_gpd, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int (GPD)')
-        ax.semilogx(self.T_ev_corrected_hist, self.stdlo_gpd, color = "black",linestyle='dotted')
+        # DEPRECATED
+        # # Fitted GPD
+        # ax.semilogx(self.T_gpd_fitted, np.sort(self.x_vals_gpd_hist), color = 'orange',linestyle='dashed', linewidth=2.5, label='Fitted GPD')
+        # # Confidence interval for fitted GPD
+        # ax.semilogx(self.T_gpd_fitted, self.stdup_gpd, color = "tab:gray",linestyle='dotted')#, label=f'{self.conf} Conf. Band')
+        # ax.semilogx(self.T_gpd_fitted, self.stdlo_gpd, color = "tab:gray",linestyle='dotted')
 
+        # DEPRECATED
+        # # Fitted GPD-Poisson
+        # ax.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
+        # # Confidence interval for fitted GPD-Poisson
+        # ax.semilogx(self.T_gpd_poiss_fitted, self.stdup_gpd_poiss, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        # ax.semilogx(self.T_gpd_poiss_fitted, self.stdlo_gpd_poiss, color = "tab:gray",linestyle='dotted')
+        
         # Fitted GPD-Poisson
-        ax.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', label='Fitted GPD-Poisson')
+        ax.semilogx(self.ci_T_years, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
         # Confidence interval for fitted GPD-Poisson
-        ax.semilogx(self.T_annmax_corrected_hist, self.stdup_gpd_poiss, color = "tab:grey",linestyle='dashdot', label=f'{self.conf} Conf Int (GPD-Poisson)')
-        ax.semilogx(self.T_annmax_corrected_hist, self.stdlo_gpd_poiss, color = "tab:grey",linestyle='dashdot')
+        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "tab:gray",linestyle='dotted')
 
         # Corrected data 
         if show_corrected:
-            ax.semilogx(T_pt_corrected_hist, np.sort(self.pit_data_corrected), linewidth=0, marker='o',markersize=3, label='Corrected Daily Data')
-            ax.semilogx(self.T_ev_corrected_hist, stats.genpareto.ppf(self.ecdf_pot_probs_hist, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=r'Corrected POT')
+            # ax.semilogx(T_pt_corrected_hist, np.sort(self.pit_data_corrected), linewidth=0, marker='o',markersize=3, label='Corrected Daily Data')
+            # ax.semilogx(self.T_ev_corrected_hist, stats.genpareto.ppf(self.ecdf_pot_probs_hist, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=r'Corrected POT')
             # ax.semilogx(self.T_annmax, q_pot(self.ecdf_annmax_probs_hist, self.opt_threshold, self.poiss_parameter, self.gpd_parameters[1], self.gpd_parameters[2]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
             ax.semilogx(self.T_annmax, self.max_data_corrected_sort, color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
 
         # No corrected data
         if show_uncorrected:
-            ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="purple", linewidth=0, marker='+',markersize=3, label='Daily Data')
-            ax.semilogx(self.T_pot_hist, self.pot_data_sorted, color="green", linewidth=0, marker='+',markersize=3, label='POTs')
-            ax.semilogx(self.T_annmax, self.max_data_sorted, color="red", linewidth=0, marker='+',markersize=3, label='Annual Maxima')
+            # ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
+            # ax.semilogx(self.T_pot_hist, self.pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POTs')
+            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
 
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
@@ -633,10 +778,12 @@ class ExtremeCorrection():
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        # ax.set_xlim(right=10000)
+        # ax.set_xlim(right=10100)
         ax.set_xlim(left=0.5, right=self.n_year_peaks+100)
-        ax.set_ylim(4, np.max(np.concatenate([self.x_vals_gpd_poiss_hist, self.x_vals_gpd_hist]) +2))
-        ax.legend(fontsize=LEGEND_FONTSIZE)
+        # ax.set_ylim(0, np.max(np.concatenate([self.x_vals_gpd_poiss_hist, self.x_vals_gpd_hist, self.max_data_sorted]) +2))
+        ax.set_ylim(0, np.max(np.concatenate([self.x_vals_gpd_poiss_hist, self.max_data_sorted]) +2))
+        # ax.set_ylim(0, 100)
+        ax.legend(loc='best',fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
             plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
@@ -682,37 +829,37 @@ class ExtremeCorrection():
         
 
         # Confidence intervals
-        dqgev = dq_gev(self.ecdf_annmax_probs_hist, p=[self.parameters[0], self.parameters[1], self.parameters[2]])
+        dqgev = dq_gev(gev_probs_fitted, p=[self.parameters[0], self.parameters[1], self.parameters[2]])
         aux_fun = lambda x: nll_gev(self.max_data, x)
         hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
         hessians_gev = hess([self.parameters[0], self.parameters[1], self.parameters[2]])
         invI0_gev = np.linalg.inv(hessians_gev)
 
         stdDq_gev = np.sqrt(np.sum((dqgev.T@invI0_gev) * dqgev.T, axis=1)) # Es lo mismo 
-        self.stdup_gev = self.max_data_corrected + stdDq_gev*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        self.stdlo_gev = self.max_data_corrected - stdDq_gev*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        self.stdup_gev = self.x_vals_gev_hist + stdDq_gev*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        self.stdlo_gev = self.x_vals_gev_hist - stdDq_gev*stats.norm.ppf(1-(1-self.conf)/2,0,1)
 
 
 
         # Gráfico
         fig = plt.figure(figsize=(12,8))
         ax= fig.add_subplot()
-        ax.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = 'orange',linestyle='dashed', label='Fitted GEV')
+        ax.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = 'red',linestyle='dashed', label='Fitted GEV')
 
         # Corrected data 
         if show_corrected:
             ax.semilogx(T_pt_corrected_hist, np.sort(self.pit_data_corrected), linewidth=0, marker='o',markersize=3, label='Corrected Daily Data')
-            ax.semilogx(self.T_ev_corrected_hist, stats.genextreme.ppf(self.ecdf_annmax_probs_hist, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
+            ax.semilogx(self.T_ev_corrected_hist, stats.genextreme.ppf(self.ecdf_annmax_probs_hist, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
 
         # No corrected data
         if show_uncorrected:
-            ax.semilogx(self.T_pot_hist, self.max_data_sorted, color="green", linewidth=0, marker='+',markersize=3, label='Annual Maxima')
-            ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="purple", linewidth=0, marker='+',markersize=3, label='Daily Data')
+            ax.semilogx(self.T_pot_hist, self.max_data_sorted, color="red", linewidth=0, marker='o',markersize=3, label='Annual Maxima')
+            ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
 
 
         # Confidence interval for fitted GEV
-        ax.semilogx(self.T_ev_corrected_hist, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax.semilogx(self.T_ev_corrected_hist, self.stdlo_gev, color = "black",linestyle='dotted')
+        ax.semilogx(self.T_gev_fitted, self.stdup_gev, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax.semilogx(self.T_gev_fitted, self.stdlo_gev, color = "tab:gray",linestyle='dotted')
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
         ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
@@ -720,7 +867,8 @@ class ExtremeCorrection():
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=10000)
+        ax.set_xlim(left=0.3,right=100)
+        ax.set_ylim(bottom=4)
         ax.legend(fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
@@ -728,20 +876,26 @@ class ExtremeCorrection():
         plt.close(fig)
 
     def apply_sim_correction(
-            self
+            self,
+            random_state=0
     ):
         
         if self.method == "POT":
-            self._pot_correction_sim()
+            self._pot_correction_sim(random_state)
         elif self.method == "AnnMax":
-            self._annmax_correction_sim()
+            self._annmax_correction_sim(random_state)
 
-    def _pot_correction_sim(self):
+    def _pot_correction_sim(self, random_state):
 
         ### Apply Correction  in POTs 
         # POT 
         self.ecdf_pot_probs_sim = np.arange(1, self.n_pot_sim + 1) / (self.n_pot_sim + 1)   # ECDF
-        self.sim_pot_data_corrected = stats.genpareto.ppf(self.ecdf_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])    # Corrected POT
+        # Set the random seed
+        np.random.seed(random_state)
+        self.runif_pot_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot_sim))   # Random Uniform
+        self.sim_pot_data_corrected = stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])    # Corrected POT
+        # If the correction is applied with exponential
+        # self.sim_pot_data_corrected = stats.expon.ppf(self.ecdf_pot_probs_sim, loc=0.0, scale=self.parameters[1])    # Corrected POT
         
         # Annual Maxima
         # self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_peaks + 1) / (self.n_sim_peaks + 1)    # Empirical distribution function for Annual Maxima
@@ -749,23 +903,29 @@ class ExtremeCorrection():
         # self.sim_max_data_corrected = stats.genextreme.ppf(self.ecdf_annmax_probs_sim, self.gpd_parameters[2], loc=self.gpd_parameters[0], scale=self.gpd_parameters[1])
         
         # Correct point-in-time data 
-        sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
+        # sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
         
         if self.n_pot_sim > 1:
-            # Create a boolean mask for values above the first “peak_values[0]”
-            mask = sim_aux_pit_corrected > self.sim_pot_data_sorted[0]
-            # Clip the values to interpolate
-            clipped_vals = np.clip(
-                sim_aux_pit_corrected[mask], 
-                self.sim_pot_data_sorted[0], 
-                self.sim_pot_data_sorted[-1]
-            )
+            # # Create a boolean mask for values above the first “peak_values[0]”
+            # mask = sim_aux_pit_corrected > self.sim_pot_data_sorted[0]
+            # # Clip the values to interpolate
+            # clipped_vals = np.clip(
+            #     sim_aux_pit_corrected[mask], 
+            #     self.sim_pot_data_sorted[0], 
+            #     self.sim_pot_data_sorted[-1]
+            # )
             
-            # Interpolate them onto the corrected peak range
-            sim_aux_pit_corrected[mask] = np.interp(
-                clipped_vals,                   # x-coords to interpolate
-                self.sim_pot_data_sorted,       # x-coords of data points
-                self.sim_pot_data_corrected     # y-coords of data points
+            # # Interpolate them onto the corrected peak range
+            # sim_aux_pit_corrected[mask] = np.interp(
+            #     clipped_vals,                   # x-coords to interpolate
+            #     self.sim_pot_data_sorted,       # x-coords of data points
+            #     self.sim_pot_data_corrected     # y-coords of data points
+            # )
+
+            sim_aux_pit_corrected = np.interp(
+                self.sim_pit_data,              # x-coords to interpolate
+                np.append(min(self.sim_pit_data), self.sim_pot_data_sorted),    # x-coords of data points
+                np.append(min(self.sim_pit_data), self.sim_pot_data_corrected)  # y-coords of data points 
             )
             
             # Store the corrected data
@@ -773,43 +933,48 @@ class ExtremeCorrection():
             self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
         else:
+            Warning("Not enough sampled POTs to apply the correction")
             # Store the corrected data 
             self.sim_pit_data_corrected = sim_aux_pit_corrected
             self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
 
-    def _annmax_correction_sim(self):
+    def _annmax_correction_sim(self, random_state):
  
         # Correction           
         # Empirical distribution function for Annual Maxima
-        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)
+        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)  # ECDF
+        # Set the random seed
+        np.random.seed(random_state)
+        self.runif_annmax_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_sim_year_peaks))   # Random Uniform
         # Correct Annual Maxima using the fitted GEV
-        self.sim_max_data_corrected = stats.genextreme.ppf(self.ecdf_annmax_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
+        self.sim_max_data_corrected = stats.genextreme.ppf(self.runif_annmax_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
         
         # Correct point-in-time data 
-        sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
+        # sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
         
         if self.n_sim_year_peaks > 1:
-            # Create a boolean mask for values above the first “peak_values[0]”
-            mask = sim_aux_pit_corrected > self.sim_max_data_sorted[0]
-            # Clip the values to interpolate
-            clipped_vals = np.clip(
-                sim_aux_pit_corrected[mask], 
-                self.sim_max_data_sorted[0], 
-                self.sim_max_data_sorted[-1]
-            )
+            # # Create a boolean mask for values above the first “peak_values[0]”
+            # mask = sim_aux_pit_corrected > self.sim_max_data_sorted[0]
+            # # Clip the values to interpolate
+            # clipped_vals = np.clip(
+            #     sim_aux_pit_corrected[mask], 
+            #     self.sim_max_data_sorted[0], 
+            #     self.sim_max_data_sorted[-1]
+            # )
             
             # Interpolate them onto the corrected peak range
-            sim_aux_pit_corrected[mask] = np.interp(
-                clipped_vals,                   # x-coords to interpolate
-                self.sim_max_data_sorted,       # x-coords of data points
-                self.sim_max_data_corrected     # y-coords of data points
+            sim_aux_pit_corrected = np.interp(
+                self.sim_pit_data,              # x-coords to interpolate
+                np.append(min(self.sim_pit_data), self.sim_max_data_sorted),    # x-coords of data points
+                np.append(min(self.sim_pit_data), self.sim_max_data_corrected)  # y-coords of data points 
             )
             
             # Store the corrected data
             self.sim_pit_data_corrected = sim_aux_pit_corrected
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
         else:
+            Warning("Not enough sampled Annual Maxima to apply the correction")
             # Store the corrected data 
             self.sim_pit_data_corrected = sim_aux_pit_corrected
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
@@ -839,10 +1004,12 @@ class ExtremeCorrection():
         """
         Periodo de retorno de la serie simulada
         """
-        
+
+        """ DEPRECATED
         ###### POTs ###### 
         # GPD fit over a grid of x-values
         x_vals_gpd_sim = np.linspace(self.sim_pot_data_corrected[0], self.sim_pot_data_corrected[-1], 1000)
+        # x_vals_gpd_sim = np.linspace(self.sim_pot_data_corrected[0], 10000, 1000)
         # Return period from GPD fitted
         gpd_probs_fitted = stats.genpareto.cdf(x_vals_gpd_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
         T_gpd_fitted = 1.0 / (1.0 - gpd_probs_fitted) / self.poiss_parameter #*(40/len(max_data_hist[wt]))#(10000/n_peaks)
@@ -858,15 +1025,15 @@ class ExtremeCorrection():
         T_pot_sim = 1.0 / (1.0 - self.ecdf_pot_probs_sim) / self.poiss_parameter #*(40/len(max_data_hist[wt]))#(10000/n_peaks)
         
         # Confidence intervals for GPD
-        dqgpd_sim = dq_gpd(self.ecdf_pot_probs_sim, self.parameters[0], self.parameters[1], self.parameters[2])
+        dqgpd_sim = dq_gpd(gpd_probs_fitted, self.parameters[0], self.parameters[1], self.parameters[2])
         aux_fun = lambda x: nll_gpd(self.pot_data, x)
         hess = ndt.Hessian(aux_fun, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
         hessians_gpd_sim = hess([self.parameters[0], self.parameters[1], self.parameters[2]])
         invI0_gpd_sim = np.linalg.inv(hessians_gpd_sim)
         stdDq_gpd_sim = np.sqrt(np.sum((dqgpd_sim.T@invI0_gpd_sim) * dqgpd_sim.T, axis=1)) # Es lo mismo 
-        stdup_gpd_sim = self.sim_pot_data_corrected + stdDq_gpd_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        stdlo_gpd_sim = self.sim_pot_data_corrected - stdDq_gpd_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-
+        stdup_gpd_sim = x_vals_gpd_sim + stdDq_gpd_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        stdlo_gpd_sim = x_vals_gpd_sim - stdDq_gpd_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        """
         ###### Daily Data ######
         # Daily corrected data
         ecdf_pt_probs_corrected_sim = np.arange(1, self.n_sim_pit + 1) / (self.n_sim_pit + 1)
@@ -884,51 +1051,59 @@ class ExtremeCorrection():
 
         # GPD-Poisson Corrected peaks: re-check CDF and return periods
         ecdf_annmax_probs_corrected_sim = cdf_pot(
-            q_pot(self.ecdf_annmax_probs_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]),
+            q_pot(self.ecdf_annmax_probs_sim, self.parameters, self.poiss_parameter),
             self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]
         )
         self.T_annmax_corrected_sim = 1.0 / (1.0 - ecdf_annmax_probs_corrected_sim) #*(40/self.n_peaks)
         
-        # Confidence Intervals
-        dqpot_sim = dq_pot(self.ecdf_annmax_probs_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
-        aux_fun_sim = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
-        hess_sim = ndt.Hessian(aux_fun_sim, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
-        hessians_gpd_poiss_sim = hess_sim([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
-        invI0_gpd_poiss_sim = np.linalg.inv(hessians_gpd_poiss_sim)   
-        stdDq_gpd_poiss_sim = np.sqrt(np.sum((dqpot_sim.T@invI0_gpd_poiss_sim) * dqpot_sim.T, axis=1)) 
-        self.stdup_gpd_poiss_sim = q_pot(ecdf_annmax_probs_corrected_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]) + stdDq_gpd_poiss_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        self.stdlo_gpd_poiss_sim = q_pot(ecdf_annmax_probs_corrected_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]) - stdDq_gpd_poiss_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        # # Confidence Intervals
+        # dqpot_sim = dq_pot(gpd_poiss_probs_fitted_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
+        # aux_fun_sim = lambda x: nll_pot(self.pit_data, self.n_year_peaks, x)
+        # hess_sim = ndt.Hessian(aux_fun_sim, step=1e-5)  # Añado el step para que no de problemas de inestabilidad
+        # hessians_gpd_poiss_sim = hess_sim([self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2]])
+        # invI0_gpd_poiss_sim = np.linalg.inv(hessians_gpd_poiss_sim)   
+        # stdDq_gpd_poiss_sim = np.sqrt(np.sum((dqpot_sim.T@invI0_gpd_poiss_sim) * dqpot_sim.T, axis=1)) 
+        # self.stdup_gpd_poiss_sim = q_pot(gpd_poiss_probs_fitted_sim, self.parameters, self.poiss_parameter) + stdDq_gpd_poiss_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        # self.stdlo_gpd_poiss_sim = q_pot(gpd_poiss_probs_fitted_sim, self.parameters, self.poiss_parameter) - stdDq_gpd_poiss_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
 
 
         ### Plot
         fig = plt.figure(figsize=(12,8))
         ax= fig.add_subplot()
-        # Fitted GPD
-        ax.semilogx(T_gpd_fitted, np.sort(x_vals_gpd_sim), color = 'orange',linestyle='dashed', label='Fitted GPD')
-        # Confidence Interval for fitted GPD
-        ax.semilogx(T_ev_corrected_sim, stdup_gpd_sim, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int (GPD)')
-        ax.semilogx(T_ev_corrected_sim, stdlo_gpd_sim, color = "black",linestyle='dotted')
+        # # Fitted GPD
+        # ax.semilogx(T_gpd_fitted, x_vals_gpd_sim, color = 'orange',linestyle='dashed', linewidth=2.5, label='Fitted GPD')
+        # # Confidence interval for fitted GPD
+        # ax.semilogx(T_gpd_fitted, stdup_gpd_sim, color = "tab:gray",linestyle='dotted')#, label=f'{self.conf} Conf. Band')
+        # ax.semilogx(T_gpd_fitted, stdlo_gpd_sim, color = "tab:gray",linestyle='dotted')
 
+        # # Fitted GPD-Poisson
+        # ax.semilogx(self.T_gpd_poiss_fitted_sim, self.x_vals_gpd_poiss_sim, color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
+        # # Confidence interval for fitted GPD-Poisson
+        # ax.semilogx(self.T_gpd_poiss_fitted_sim, self.stdup_gpd_poiss_sim, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        # ax.semilogx(self.T_gpd_poiss_fitted_sim, self.stdlo_gpd_poiss_sim, color = "tab:gray",linestyle='dotted')
+        
         # Fitted GPD-Poisson
-        ax.semilogx(self.T_gpd_poiss_fitted_sim, np.sort(self.x_vals_gpd_poiss_sim), color = 'red',linestyle='dashed', label='Fitted GPD-Poisson')
+        ax.semilogx(self.ci_T_years, self.x_vals_gpd_poiss_hist, color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
         # Confidence interval for fitted GPD-Poisson
-        ax.semilogx(self.T_annmax_corrected_sim, self.stdup_gpd_poiss_sim, color = "tab:grey",linestyle='dashdot', label=f'{self.conf} Conf Int (GPD-Poisson)')
-        ax.semilogx(self.T_annmax_corrected_sim, self.stdlo_gpd_poiss_sim, color = "tab:grey",linestyle='dashdot')
+        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "tab:gray",linestyle='dotted')
 
+        label=""
         # Corrected data 
         if show_corrected:
-            ax.semilogx(T_pt_corrected_sim, np.sort(self.sim_pit_data_corrected), linewidth=0, marker='o',markersize=3, label=f'Corrected Daily Data')
-            ax.semilogx(T_ev_corrected_sim, stats.genpareto.ppf(self.ecdf_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), 
-                        color = 'orange',linewidth=0, marker='o',markersize=3, label=f'Corrected POT')
+            # ax.semilogx(T_pt_corrected_sim, np.sort(self.sim_pit_data_corrected), linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Corrected Daily Data')
+            # ax.semilogx(T_ev_corrected_sim, stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), 
+            #             color = 'orange',linewidth=0, marker='o',markersize=5, label=f'Corrected POT')
             # ax.semilogx(self.T_annmax_sim, q_pot(self.ecdf_annmax_probs_sim, self.opt_threshold, self.poiss_parameter, self.gpd_parameters[1], self.gpd_parameters[2]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted, color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted, color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
+            label = label+"_Corr"
+        
         # No corrected data
         if show_uncorrected:
-            ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="purple", linewidth=0, marker='+',markersize=3, label='Daily Data')
-            ax.semilogx(T_pot_sim, self.sim_pot_data_sorted, color="green", linewidth=0, marker='+',markersize=3, label='POT')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted, color="red", linewidth=0, marker='+',markersize=3, label='Annual Maxima')
-
+            # ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
+            # ax.semilogx(T_pot_sim, self.sim_pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POT')
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
+            label = label+"_NoCorr"
 
     
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
@@ -936,14 +1111,15 @@ class ExtremeCorrection():
         # ax.set_title(f"Simulated Return Period ({self.var})", fontsize=TITLE_FONTSIZE)
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
-        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())   
         # ax.set_xlim(right=10000)
-        ax.set_xlim(left=0.5, right=self.n_sim_year_peaks+100)
-        ax.set_ylim(bottom=4)
-        ax.legend(loc='upper left', fontsize=LEGEND_FONTSIZE)
+        ax.set_xlim(left=0.9, right=self.n_sim_year_peaks+100)
+        # ax.set_ylim(bottom=0)
+        ax.set_ylim(0, 800)
+        ax.legend(loc='best', fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod{label}.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def _annmax_sim_return_period_plot(
@@ -975,37 +1151,39 @@ class ExtremeCorrection():
         T_pot_sim = 1.0 / (1.0 - self.ecdf_annmax_probs_sim) #*(40/len(max_data_hist[wt]))#(10000/n_peaks)
         
         # Confidence intervals
-        dqgev_sim = dq_gev(self.ecdf_annmax_probs_sim, p=[self.parameters[0], self.parameters[1], self.parameters[2]])
+        dqgev_sim = dq_gev(gev_probs_fitted, p=[self.parameters[0], self.parameters[1], self.parameters[2]])
         aux_fun = lambda x: nll_gev(self.max_data, x)
         hess = ndt.Hessian(aux_fun, step=1e-4)  # Añado el step para que no de problemas de inestabilidad
         hessians_gev_sim = hess([self.parameters[0], self.parameters[1], self.parameters[2]])
         invI0_gev_sim = np.linalg.inv(hessians_gev_sim)
 
         stdDq_gev_sim = np.sqrt(np.sum((dqgev_sim.T@invI0_gev_sim) * dqgev_sim.T, axis=1)) # Es lo mismo 
-        stdup_gev_sim = self.sim_max_data_corrected + stdDq_gev_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
-        stdlo_gev_sim = self.sim_max_data_corrected - stdDq_gev_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        stdup_gev_sim = x_vals_gev_sim + stdDq_gev_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
+        stdlo_gev_sim = x_vals_gev_sim - stdDq_gev_sim*stats.norm.ppf(1-(1-self.conf)/2,0,1)
 
 
         # Plot
         # Gráfico
         fig = plt.figure(figsize=(12,8))
         ax= fig.add_subplot()
-        ax.semilogx(T_gev_fitted, np.sort(x_vals_gev_sim), color = 'orange',linestyle='dashed', label='Fitted GEV')
+        ax.semilogx(T_gev_fitted, np.sort(x_vals_gev_sim), color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GEV')
 
+        label=""
         # Corrected data 
         if show_corrected:
-            ax.semilogx(T_pt_corrected_sim, np.sort(self.sim_pit_data_corrected), linewidth=0, marker='o',markersize=3, label=f'Corrected Daily Data')
-            ax.semilogx(T_ev_corrected_sim, stats.genextreme.ppf(self.ecdf_annmax_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'orange',linewidth=0, marker='o',markersize=3, label=f'Corrected Annual Maxima')
+            ax.semilogx(T_pt_corrected_sim, np.sort(self.sim_pit_data_corrected), color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Corrected Daily Data')
+            ax.semilogx(T_ev_corrected_sim, stats.genextreme.ppf(self.runif_annmax_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), color = 'red',linewidth=0, marker='o',markersize=5, label=f'Corrected Annual Maxima')
+            label = label+"_Corr"
 
         # No corrected data
         if show_uncorrected:
-            ax.semilogx(T_pot_sim, self.sim_max_data_sorted, color="green", linewidth=0, marker='+',markersize=3, label='Annual Maxima')
-            ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="purple", linewidth=0, marker='+',markersize=3, label='Daily Data')
-
+            ax.semilogx(T_pot_sim, self.sim_max_data_sorted, color="red", linewidth=0, marker='o',markersize=5, label='Annual Maxima')
+            ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
+            label = label+"_NoCorr"
 
         # Confidence interval for fitted GEV
-        ax.semilogx(T_ev_corrected_sim, stdup_gev_sim, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax.semilogx(T_ev_corrected_sim, stdlo_gev_sim, color = "black",linestyle='dotted')
+        ax.semilogx(T_gev_fitted, stdup_gev_sim, color = "black",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax.semilogx(T_gev_fitted, stdlo_gev_sim, color = "black",linestyle='dotted')
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
         ax.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
@@ -1013,11 +1191,12 @@ class ExtremeCorrection():
         ax.set_xscale('log')
         ax.set_xticks([1, 2, 5, 10, 20, 50, 100, 250, 1000, 10000])
         ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-        ax.set_xlim(right=10000)
+        ax.set_xlim(left=0.5,right=2000)
+        ax.set_ylim(bottom=3.9, top=20)
         ax.legend(loc='upper left', fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:
-            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod.png", dpi=300, bbox_inches='tight')
+            plt.savefig(f"{self.folder}/Simulation_ReturnPeriod{label}.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def interval_return_period_plot(
@@ -1066,7 +1245,7 @@ class ExtremeCorrection():
         # Serie simulada 40 por 40 años SIN CORREGIR
         max1 = []
         max1.append(np.max(annual_maxima_nocorr_sim_int[0]))
-        ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_nocorr_sim_int[0]), color = "tab:gray", alpha = alpha, label="No Corrected Simulated Data by 40 Years")
+        ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_nocorr_sim_int[0]), color = "tab:gray", alpha = alpha, label=f"No Corrected Simulated Data by {self.n_year_peaks} Years")
         for i_year in range(1,self.n_year_intervals):
             max1.append(np.max(annual_maxima_nocorr_sim_int[i_year]))
             ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[i_year], np.sort(annual_maxima_nocorr_sim_int[i_year]), color = "tab:gray", alpha = alpha)
@@ -1074,7 +1253,7 @@ class ExtremeCorrection():
         # Serie simulada 40 por 40 años CORREGIDA
         max2 = []
         max2.append(np.max(annual_maxima_corr_sim_int[0]))
-        ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_corr_sim_int[0]), color = "tab:gray", alpha = alpha, label="Corrected Simulated Data by 40 Years")
+        ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_corr_sim_int[0]), color = "tab:gray", alpha = alpha, label=f"Corrected Simulated Data by {self.n_year_peaks} Years")
         for i_year in range(1,self.n_year_intervals):
             max2.append(np.max(annual_maxima_corr_sim_int[i_year]))
             ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[i_year], np.sort(annual_maxima_corr_sim_int[i_year]), color = "tab:gray", alpha = alpha)
@@ -1083,20 +1262,18 @@ class ExtremeCorrection():
         # Annual Return Periods
         # ax.semilogx(T_ev_corrected_hist[wt], stats.genextreme.ppf(ecdf_annmax_probs_hist[wt], shape_gev[wt], loc=loc_gev[wt], scale=scale_gev[wt]), 
         #             color = "#FF0000", linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-        ax1.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
-        ax1.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
-        
-        ax2.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
-        ax2.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
+        ax1.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
+        ax1.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=5, label='Annual Maxima')
+
+        ax2.semilogx(self.T_gpd_poiss_fitted, np.sort(self.x_vals_gpd_poiss_hist), color = "red",linestyle='dashed', label=f'Adjusted GPD-Poisson')
+        ax2.semilogx(self.T_annmax_corrected_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=5, label='Annual Maxima')
         
         # Confidence intervals
-        ax1.semilogx(self.T_annmax_corrected_hist, self.stdup_gpd_poiss, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax1.semilogx(self.T_annmax_corrected_hist, self.stdlo_gpd_poiss, color = "black",linestyle='dotted')
+        ax1.semilogx(self.T_gpd_poiss_fitted, self.stdup_gpd_poiss, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax1.semilogx(self.T_gpd_poiss_fitted, self.stdlo_gpd_poiss, color = "tab:gray",linestyle='dotted')
         
-        ax2.semilogx(self.T_annmax_corrected_hist, self.stdup_gpd_poiss, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax2.semilogx(self.T_annmax_corrected_hist, self.stdlo_gpd_poiss, color = "black",linestyle='dotted')
-        
-        
+        ax2.semilogx(self.T_gpd_poiss_fitted, self.stdup_gpd_poiss, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
+        ax2.semilogx(self.T_gpd_poiss_fitted, self.stdlo_gpd_poiss, color = "tab:gray",linestyle='dotted')
 
         ax1.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
         ax1.set_ylabel(f"{self.var}", fontsize=LABEL_FONTSIZE)
@@ -1109,7 +1286,7 @@ class ExtremeCorrection():
         ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax1.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
         ax1.set_xlim(right=self.n_year_peaks+50)
-        ax1.set_ylim(bottom=6)
+        ax1.set_ylim(bottom=0)
         ax1.set_title("No Corrected", fontsize=LABEL_FONTSIZE)
 
 
@@ -1124,7 +1301,7 @@ class ExtremeCorrection():
         ax2.grid(True, which="both", linestyle="--", linewidth=0.5)
         ax2.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
         ax2.set_xlim(right=self.n_year_peaks+50)
-        ax2.set_ylim(bottom=6)
+        ax2.set_ylim(bottom=0)
         ax2.set_title("Corrected", fontsize=LABEL_FONTSIZE)
 
         fig.tight_layout()
@@ -1168,7 +1345,7 @@ class ExtremeCorrection():
         # Serie simulada 40 por 40 años SIN CORREGIR
         max1 = []
         max1.append(np.max(annual_maxima_nocorr_sim_int[0]))
-        ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_nocorr_sim_int[0]), color = "tab:gray", alpha = alpha, label="No Corrected Simulated Data by 40 Years")
+        ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_nocorr_sim_int[0]), color = "tab:gray", alpha = alpha, label=f"No Corrected Simulated Data by {self.n_year_peaks} Years")
         for i_year in range(1,self.n_year_intervals):
             max1.append(np.max(annual_maxima_nocorr_sim_int[i_year]))
             ax1.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[i_year], np.sort(annual_maxima_nocorr_sim_int[i_year]), color = "tab:gray", alpha = alpha)
@@ -1176,7 +1353,7 @@ class ExtremeCorrection():
         # Serie simulada 40 por 40 años CORREGIDA
         max2 = []
         max2.append(np.max(annual_maxima_corr_sim_int[0]))
-        ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_corr_sim_int[0]), color = "tab:gray", alpha = alpha, label="Corrected Simulated Data by 40 Years")
+        ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[0], np.sort(annual_maxima_corr_sim_int[0]), color = "tab:gray", alpha = alpha, label=f"Corrected Simulated Data by {self.n_year_peaks} Years")
         for i_year in range(1,self.n_year_intervals):
             max2.append(np.max(annual_maxima_corr_sim_int[i_year]))
             ax2.semilogx(T_ecdf_annual_maxima_nocorr_sim_int[i_year], np.sort(annual_maxima_corr_sim_int[i_year]), color = "tab:gray", alpha = alpha)
@@ -1185,18 +1362,18 @@ class ExtremeCorrection():
         # Annual Return Periods
         # ax.semilogx(T_ev_corrected_hist[wt], stats.genextreme.ppf(ecdf_annmax_probs_hist[wt], shape_gev[wt], loc=loc_gev[wt], scale=scale_gev[wt]), 
         #             color = "#FF0000", linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-        ax1.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GEV')
-        ax1.semilogx(self.T_pot_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
+        ax1.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = "red",linestyle='dashed', label=f'Adjusted GEV')
+        ax1.semilogx(self.T_pot_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=5, label='Annual Maxima')
         
-        ax2.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = "tab:red",linestyle='dashed', label=f'Adjusted GEV')
-        ax2.semilogx(self.T_pot_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=4, label='Annual Maxima')
+        ax2.semilogx(self.T_gev_fitted, np.sort(self.x_vals_gev_hist), color = "red",linestyle='dashed', label=f'Adjusted GEV')
+        ax2.semilogx(self.T_pot_hist, self.max_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=5, label='Annual Maxima')
         
         # Confidence intervals
-        ax1.semilogx(self.T_ev_corrected_hist, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax1.semilogx(self.T_ev_corrected_hist, self.stdlo_gev, color = "black",linestyle='dotted')
+        ax1.semilogx(self.T_gev_fitted, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
+        ax1.semilogx(self.T_gev_fitted, self.stdlo_gev, color = "black",linestyle='dotted')
         
-        ax2.semilogx(self.T_ev_corrected_hist, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
-        ax2.semilogx(self.T_ev_corrected_hist, self.stdlo_gev, color = "black",linestyle='dotted')
+        ax2.semilogx(self.T_gev_fitted, self.stdup_gev, color = "black",linestyle='dotted', label=f'{self.conf} Conf Int')
+        ax2.semilogx(self.T_gev_fitted, self.stdlo_gev, color = "black",linestyle='dotted')
         
         
 
@@ -1209,8 +1386,8 @@ class ExtremeCorrection():
         for lh in leg1.legend_handles:
             lh.set_alpha(1)
         ax1.grid(True, which="both", linestyle="--", linewidth=0.5)
-        ax1.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax1.set_xlim(right=self.n_year_peaks)
+        ax1.set_ylim(bottom = 4, top = np.max([np.max(max1), np.max(max2)])+0.1)
+        ax1.set_xlim(right=self.n_year_peaks+10)
         ax1.set_title("No Corrected", fontsize=LABEL_FONTSIZE)
 
 
@@ -1223,8 +1400,8 @@ class ExtremeCorrection():
         for lh in leg2.legend_handles:
             lh.set_alpha(1)
         ax2.grid(True, which="both", linestyle="--", linewidth=0.5)
-        ax2.set_ylim(bottom = -0.1, top = np.max([np.max(max1), np.max(max2)])+0.1)
-        ax2.set_xlim(right=self.n_year_peaks)
+        ax2.set_ylim(bottom = 4, top = np.max([np.max(max1), np.max(max2)])+0.1)
+        ax2.set_xlim(right=self.n_year_peaks+10)
         ax2.set_title("Corrected", fontsize=LABEL_FONTSIZE)
 
         fig.tight_layout()
@@ -1232,3 +1409,25 @@ class ExtremeCorrection():
             plt.savefig(f"{self.folder}/ComparativeIntervals_ReturnPeriod.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
+
+    def test_dist(self):
+
+        if self.method == "AnnMax":
+            res_test = stats.cramervonmises(self.sim_max_data, 
+                                            cdf=stats.genextreme.cdf,
+                                            args=(self.parameters[2], self.parameters[0], self.parameters[1])
+                                            )
+            return {
+                "Statistic": res_test.statistic, 
+                "P-value": res_test.pvalue
+                }
+        
+        elif self.method == "POT":
+            res_test = stats.cramervonmises(self.sim_pot_data, 
+                                            cdf=stats.genpareto.cdf,
+                                            args=(self.parameters[2], self.parameters[0], self.parameters[1])
+                                            )
+            return {
+                "Statistic": res_test.statistic, 
+                "P-value": res_test.pvalue
+                }

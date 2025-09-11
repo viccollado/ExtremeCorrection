@@ -59,3 +59,15 @@ def dq_gev(prob,p):
 
     return Dq
     
+def q_gev(prob, p):
+    """
+    Quantile function of GEV
+    """
+    xi = -p[2]
+    mu = p[0]
+    sigma = p[1]
+
+    if np.abs(xi) < 1e-8:
+        return mu - sigma * np.log(-np.log(prob))
+    else:
+        return mu + (sigma/xi)*((-np.log(prob))**(-xi)-1)
