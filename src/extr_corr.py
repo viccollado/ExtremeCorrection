@@ -15,7 +15,7 @@ from .gev_proflikelihood import gev_rp_plik
 from .gpd_profilelikelihood import gpdpoiss_rp_plik
 
 # Optimal Threshold
-from oldsrc.optimal_threshold_studentized import OptimalThreshold
+from .optimal_threshold_studentized import OptimalThreshold
 
 
 class ExtremeCorrection():
@@ -193,7 +193,7 @@ class ExtremeCorrection():
         self._validate_pot_config()
 
         # Choose the method GEV or GPD
-        # self._define_method(tolerance=tolerance)
+        self._define_method(tolerance=0.8)
         self.method = method.lower()
 
         # Initilialize distribution parameters
@@ -414,7 +414,7 @@ class ExtremeCorrection():
         pot = opt_thres.pks
         pot_sorted = np.sort(pot)
 
-        return pot, pot_sorted, self.opt_threshold
+        return pot, pot_sorted
 
     def apply_correction(
             self,
@@ -1099,11 +1099,14 @@ class ExtremeCorrection():
         plt.close(fig)
 
     def apply_sim_correction(
-            self
+            self,
+            random_state=None
     ):
         """
         Apply extreme correction procedure in sampled data
         """
+        if random_state is not None:
+            np.random.seed(random_state)
         
         if self.method == "pot":
             self._pot_correction_sim()
@@ -1358,7 +1361,7 @@ class ExtremeCorrection():
         # ax.set_xlim(right=10000)
         ax.set_xlim(left=0.9, right=self.n_sim_year_peaks+100)
         # ax.set_ylim(bottom=0)
-        ax.set_ylim(0, 800)
+        ax.set_ylim(0, 100)
         ax.legend(loc='best', fontsize=LEGEND_FONTSIZE)
         ax.grid()
         if self.folder is not None:

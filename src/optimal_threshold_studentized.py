@@ -250,7 +250,8 @@ def threshold_search(u_data, e_data, W_data, ploteat=False, filename=None):
     # Fit: Smoothing spline
     u_mean = np.mean(u_data)
     u_std = np.std(u_data, ddof=1)
-    objective_function = lambda x: (smoothingspline(u_data, e_data, W_data, u_mean, u_std, x)[0] - 0.9)** 2
+    def objective_function(x):
+        return (smoothingspline(u_data, e_data, W_data, u_mean, u_std, x)[0] - 0.9)** 2
     SmoothingParam = fminbound(objective_function, 0.5, 0.99)
     _, fitresult, _ = smoothingspline(u_data, e_data, W_data, u_mean, u_std, SmoothingParam)
 
@@ -330,12 +331,24 @@ def smoothingspline(x_data, y_data, w_data, x_mean, x_std, SmoothingParam):
         The fitted spline model.
     gof : dict
         Goodness-of-fit metrics containing R-squared.
-    """
+    """    
     # Normalize data
     x_norm = (x_data - x_mean) / x_std
 
+    # Ensure strict increase in x for csaps by deduplicating normalized x
+    x_unique, idx = np.unique(x_norm, return_index=True)
+    y_use  = y_data[idx]
+    w_use  = w_data[idx] 
+
+    # Final safety: if any nonpositive step remains (shouldn't after unique), nudge by eps
+    dx = np.diff(x_unique)
+    if np.any(dx <= 0):
+        eps = np.finfo(float).eps
+        bumps = np.maximum.accumulate((dx <= 0).astype(float))
+        x_unique = x_unique + np.concatenate([[0.0], bumps]) * eps
+
     # Usando paquete CSAPS
-    spline = csaps(x_norm, y_data, smooth=SmoothingParam, weights=w_data)
+    spline = csaps(x_unique, y_use, smooth=SmoothingParam, weights=w_use)
     
     # Usando paquete de SCIPY
     # Fit smoothing spline (smoothing parameter scaled by data length)
