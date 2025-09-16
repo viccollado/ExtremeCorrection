@@ -7,29 +7,137 @@ import numdifftools as ndt
 
 # GEV, GPD and POT utils
 from .gev_utils import dq_gev, nll_gev, q_gev
-from .gpd_utils import dq_gpd, nll_gpd, q_gpd
+# from .gpd_utils import dq_gpd, nll_gpd, q_gpd
 from .pot_utils import dq_pot, q_pot, nll_pot, cdf_pot, aux_nll_pot
 from .constants import LABEL_FONTSIZE, LEGEND_FONTSIZE
-from .proflike import return_proflike, return_proflike_root, return_proflike_root2
+# from .proflike import return_proflike, return_proflike_root, return_proflike_root2
 from .gev_proflikelihood import gev_rp_plik
 from .gpd_profilelikelihood import gpdpoiss_rp_plik
 
 # Optimal Threshold
-from src.optimal_threshold_studentized import OptimalThreshold
+from oldsrc.optimal_threshold_studentized import OptimalThreshold
 
 
 class ExtremeCorrection():
-
+    """
+    Extreme Correction class
+    """
     def __init__(
             self,
             data_hist: pd.DataFrame,
             data_sim: pd.DataFrame,
             config: dict,
             pot_config: dict,
-            method: str = None,
+            method: str = "pot",
             conf_level: float = 0.95,
-            tolerance: float = None
+            random_state: int=0
     ):
+        """
+        Extreme value correction for sampled datasets using 
+        Generalized Extreme Value (GEV) or Peaks Over Threshold (POT) approaches.
+
+        This class applies upper-tail corrections to sampled datasets
+        by fitting extreme value distributions to historical observations 
+        and adjusting the sampled extremes accordingly. See V. Collado (2025) [1].
+
+        Parameters
+        ----------
+        data_hist : pd.DataFrame
+            Historical dataset containing the observed values.
+        data_sim : pd.DataFrame
+            Simulated dataset to be corrected.
+        config : dict
+            Dictionary containing the main configuration of the model.
+            Required keys:
+                - var : str
+                    Variable to apply the correction.
+                - time_var : str
+                    Name of the time variable (datetime or timestamp).
+                - yyyy_var : str
+                    Name of the year variable.
+                - freq : float or int
+                    Frequency of observations per year 
+                    (e.g., 365.25 for daily data).
+            Optional keys:
+                - mm_var : str, default "mm"
+                    Name of the month variable.
+                - dd_var : str, default "dd"
+                    Name of the day variable.
+                - folder : str, default None
+                    Path to a folder where diagnostic plots will be saved.
+        pot_config : dict
+            Dictionary containing the POT configuration.
+            Keys:
+                - n0 : int, default 10
+                    Minimum number of exceedances required.
+                - min_peak_distance : int, default 2
+                    Minimum distance (in data points) between two peaks.
+                - init_threshold : float, default 0.0
+                    Initial threshold for peak extraction.
+                - siglevel : float, default 0.05
+                    Significance level for the Chi-squared test in 
+                    threshold optimization.
+                - plot_flag : bool, default True
+                    Whether to generate threshold selection plots.
+        method : {"am", "pot"}, default "pot"
+            Method for correction. 
+            - "am" : Annual Maxima using GEV distribution.
+            - "pot" : Peaks Over Threshold using GPD distribution.
+        conf_level : float, default=0.95
+            Confidence level for return period confidence intervals.
+        random_state : int, default=0
+            Random state for uniform distribution generated in extreme correction
+
+        Attributes
+        ----------
+        parameters : list or None
+            Distribution parameters after fitting 
+            (GEV: [loc, scale, shape], POT: [threshold, scale, shape]).
+        data_hist, data_sim : pd.DataFrame
+            Original input datasets.
+        pit_data, max_data : np.ndarray
+            Point-in-time data and annual maxima extracted from historical data.
+        sim_pit_data, sim_max_data : np.ndarray
+            Point-in-time data and annual maxima extracted from simulated data.
+        pit_data_corrected, max_data_corrected : np.ndarray
+            Corrected historical data after applying the correction.
+        sim_pit_data_corrected, sim_max_data_corrected : np.ndarray
+            Corrected simulated data after applying the correction.
+
+        Methods
+        -------
+        apply_correction(fit_diag=False)
+            Fit the extreme value distribution and apply correction 
+            to historical data.
+        apply_sim_correction()
+            Apply correction to simulated data using fitted parameters.
+        extreme_fit()
+            Fit the GEV or GPD distribution depending on the method.
+        plot_diagnostic(save=True)
+            Generate QQ and PP diagnostic plots of the fitted distribution.
+        return_period_plot(show_corrected=False, show_uncorrected=True)
+            Plot historical return periods with fitted distribution and CI.
+        sim_return_period_plot(show_corrected=True, show_uncorrected=True)
+            Plot simulated return periods with fitted distribution and CI.
+        interval_return_period_plot(alpha=0.2)
+            Compare return period plots across simulation intervals.
+        test_dist()
+            Perform goodness-of-fit test (Cramér-von Mises) 
+            on fitted distributions.
+
+        Notes
+        -----
+        - The correction is performed either on Annual Maxima (GEV) 
+          or Peaks Over Threshold (GPD).
+        - Confidence intervals of return periods are estimated using profile 
+          likelihood.
+
+        References
+        ----------
+        [1] V. Collado, R. Mínguez, F.J. Méndez. Upper-tail sampling correction technique for engineering design.
+        https://e-archivo.uc3m.es/entities/publication/1e1a55da-f4ab-42ab-b2dd-092760946360
+
+        """
 
         # Validate config dictionary
         self.config = config
@@ -40,62 +148,82 @@ class ExtremeCorrection():
         self.data_sim = data_sim
 
         ### Historical data
-        # Define historical data
-        # self.data_hist['year'] = self.data_hist[self.time_var].dt.year
-        self.max_data = self.data_hist.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values    # Annual Maxima
-        self.max_idx = self.data_hist.groupby(self.yyyy_var)[self.var].idxmax().values                            # Annual Maxima indices
-        self.max_data_sorted = np.sort(self.max_data)                                                               # Sorted Annual Maxima 
-        self.pit_data = self.data_hist[self.var].values                                                             # Point-in-time data (hourly, daily...)
-        self.pit_data_sorted = np.sort(self.pit_data)                                                               # Sorted point-in-time data (hourly, daily...)
+        self.max_data = self.data_hist.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values  # Annual Maxima
+        self.max_idx = self.data_hist.groupby(self.yyyy_var)[self.var].idxmax().values                          # Annual Maxima indices
+        self.max_data_sorted = np.sort(self.max_data)                                                           # Sorted Annual Maxima 
+        self.pit_data = self.data_hist[self.var].values                                                         # Point-in-time data (hourly, daily...)
+        self.pit_data_sorted = np.sort(self.pit_data)                                                           # Sorted point-in-time data (hourly, daily...)
 
-        # self.time_hist = self.data_hist[self.time_var].values   # pd.Datetime variable
-        self.time_interval_hist = self.data_hist[self.yyyy_var].max() - self.data_hist[self.yyyy_var].min()
-
+        # Number of historical years and point-in-time values
         self.n_year_peaks = self.max_data.shape[0]      # Nº of years
         self.n_pit = self.pit_data.shape[0]             # Nº of point-in-time observations
+        
+        # Historical time interval 
+        # self.time_interval_hist = self.data_hist[self.yyyy_var].max() - self.data_hist[self.yyyy_var].min()
+        self.time_interval_hist = self.n_pit / self.freq   # Time interval: Number of observations / Frequency 
 
         ### Simulated Data
         # Annual maxima
         # self.data_sim['year'] = self.data_sim[self.time_var].dt.year
-        self.sim_max_data = self.data_sim.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values     # Simulated annual maxima data
-        self.sim_max_idx = self.data_sim.groupby(self.yyyy_var)[self.var].idxmax().values                             # Simulated annual maxima indices
-        self.sim_max_data_sorted = np.sort(self.sim_max_data)                                                           # Sorted simulated annual maxima
-        self.sim_pit_data = self.data_sim[self.var].values                                                              # Simulated point-in-time data
-        self.sim_pit_data_sorted = np.sort(self.sim_pit_data)                                                           # Sorted simulated point-in-time data
+        self.sim_max_data = self.data_sim.groupby(self.yyyy_var, as_index=False)[self.var].max()[self.var].values   # Simulated annual maxima data
+        self.sim_max_idx = self.data_sim.groupby(self.yyyy_var)[self.var].idxmax().values                           # Simulated annual maxima indices
+        self.sim_max_data_sorted = np.sort(self.sim_max_data)                                                       # Sorted simulated annual maxima
+        self.sim_pit_data = self.data_sim[self.var].values                                                          # Simulated point-in-time data
+        self.sim_pit_data_sorted = np.sort(self.sim_pit_data)                                                       # Sorted simulated point-in-time data
 
-        # self.time_sim = self.data_sim[self.time_var].values     # pd.Datetime of simulated data
-        self.time_interval_sim = self.data_sim[self.yyyy_var].max() - self.data_sim[self.yyyy_var].min()
+        # Number of simulated years and point-in-time values
+        self.n_sim_year_peaks = self.sim_max_data.shape[0]  # Nº of simulated years
+        self.n_sim_pit = self.sim_pit_data.shape[0]         # Nº of simulated point-in-time observations
 
-        self.n_sim_year_peaks = self.sim_max_data.shape[0]   # Nº of simulated years
-        self.n_sim_pit = self.sim_pit_data.shape[0]          # Nº of simulated point-in-time observations
+        # Simulated time interval
+        # self.time_interval_sim = self.data_sim[self.yyyy_var].max() - self.data_sim[self.yyyy_var].min()
+        self.time_interval_sim = self.n_sim_pit / self.freq # Time interval: Number of observations / Frequency 
 
+
+        # TODO: CHECK IF THIS IS CURRENTLY NECESARY
         # Divide data in intervals of nº of historical years
         self.sim_first_year = np.min(self.data_sim[self.yyyy_var])     # First year of the simulation
         self.n_year_intervals = self.n_sim_year_peaks//self.n_year_peaks    # Nº of intervals to divide the simulated data
         self.sim_max_data_idx_intervals = {}    # Annual maximas per intervals
         for i_year in range(self.n_year_intervals):
-            self.sim_max_data_idx_intervals[i_year] = self.data_sim[(self.sim_first_year + self.n_year_peaks*i_year <= self.data_sim[self.yyyy_var]) & (self.data_sim[self.yyyy_var] < self.sim_first_year+self.n_year_peaks*(i_year+1))].groupby(self.yyyy_var)[self.var].idxmax().values           
-
+            self.sim_max_data_idx_intervals[i_year] = self.data_sim[(self.sim_first_year + self.n_year_peaks*i_year <= self.data_sim[self.yyyy_var]) & (self.data_sim[self.yyyy_var] < self.sim_first_year+self.n_year_peaks*(i_year+1))].groupby(self.yyyy_var)[self.var].idxmax().values
 
         # POT extracting config and fit
         self.pot_config = pot_config
         self._validate_pot_config()
 
         # Choose the method GEV or GPD
-        self._define_method(tolerance=tolerance)
-        self.method = method
+        # self._define_method(tolerance=tolerance)
+        self.method = method.lower()
 
-        # Initializa distribution parameters
+        # Initilialize distribution parameters
         # If Annual Maxima (location, scale, xi); If POT (threshold, scale, xi)
-        self.parameters = None
+        self.parameters = None  # TODO: CAMBIAR POR []?
 
         # Confidence level
         self.conf = conf_level
 
+        # Set random seed
+        self.random_state = random_state
+        np.random.seed(self.random_state)
         
 
     def _validate_config(self) -> None:
+        """
+        Validate the configuration dictionary for extreme correction
 
+        Raise
+        -----
+        KeyError
+            If any required key is missing
+        TypeError
+            If type of any required key is wrong
+
+        Notes
+        -----
+        - Required fields: "var", "time_var", "yyyy_var" and "freq"
+        - Optional fields: "mm_var", "dd_var", "folder"
+        """
         # Required fields
         required_fields = {
             "var": str,
@@ -138,6 +266,9 @@ class ExtremeCorrection():
             self.folder = None
 
     def _validate_pot_config(self) -> None:
+        """
+        Validate POT configuration dictionary for peaks extraction.
+        """
 
         if self.pot_config.get('n0') is None:
             self.pot_config['n0'] = 10
@@ -158,6 +289,11 @@ class ExtremeCorrection():
             self,
             tolerance: float = None
     ) -> None:
+        """
+        DEPRECATED
+
+        Select automatically the method to apply
+        """
 
         # Obtain optimal threshold and POTs of historical data
         self.pot_data, self.pot_data_sorted = self.obtain_pots(
@@ -199,9 +335,9 @@ class ExtremeCorrection():
 
         poiss_diff = np.abs(self.sim_poiss_parameter - self.poiss_parameter)
         # if poiss_diff < tolerance:
-        #     self.method = 'POT'
+        #     self.method = 'pot'
         # else:
-        #     self.method = 'AnnMax'
+        #     self.method = 'am'
 
         print(f"Poisson parameters difference: {poiss_diff}")
 
@@ -218,16 +354,36 @@ class ExtremeCorrection():
         """
         Compute the optimal threshold and the associated POTs
 
-        Args:
-            n0 (int, optional): Minimum number of exceedances required for valid computation. Defaults to 10.
-            min_peak_distance (int, optional): Minimum distance between two peaks (in data points). Defaults to 2.
-            siglevel (float, optional): Significance level for Chi-squared test. Defaults to 0.05.
-            threshold (float, optional): Initial threshold. Defaults to 0.0.
-            plot_flag (bool, optional): Boolean flag to make plots. Defaults to True.
+        Parameters
+        ----------
+        data : np.ndarray
+            Data used to obtain the optimal threshold
+        n0 : int, default=10
+            Minimum number of exceedances required for valid computation. Defaults to 10.
+        min_peak_distance : int, default=2
+            Minimum distance between two peaks (in data points)
+        siglevel : float, default=0.05
+            Significance level for Chi-squared test
+        threshold : float, default=0.0
+            Initial threshold. Defaults to 0.0.
+        plot_flag : bool, default=True
+            Boolean flag to make plots
 
-        Returns:
-            opt_threshold: Optimal threshold selected
-            POTs (np.array): POTs
+        Returns
+        -------
+        pot : np.ndarray
+            Peaks Over Threshold
+        pot_sorted : np.array
+            Peaks Over Threshold sorted
+
+        Attributes
+        ----------
+        self.opt_threshold : float
+            Optimal threshold
+        
+        Notes
+        -----
+        - Optimal threshold stored in self.opt_threshold
         """
         opt_thres = OptimalThreshold(data)
 
@@ -258,26 +414,33 @@ class ExtremeCorrection():
         pot = opt_thres.pks
         pot_sorted = np.sort(pot)
 
-        return pot, pot_sorted
+        return pot, pot_sorted, self.opt_threshold
 
     def apply_correction(
             self,
-            fit_diag: bool = False,
-            random_state = 0
+            fit_diag: bool = False
     ):
+        """
+        Apply correction in historical dataset
+
+        Parameters
+        ----------
+        fit_diag : bool, default=False
+            Whether to save the fitted diagnostic plots (PP and QQ-plots)
+        """
         self.parameters = self.extreme_fit()
 
         if self.folder is not None and fit_diag:
             self.plot_diagnostic(save=True)
 
-        if self.method == "POT":
-            self._pot_correction(random_state)
-        elif self.method == "AnnMax":
-            self._annmax_correction(random_state)
+        if self.method == "pot":
+            self._pot_correction()
+        elif self.method == "am":
+            self._annmax_correction()
 
     def extreme_fit(self):
 
-        if self.method == "POT":
+        if self.method == "pot":
             shape_gpd, loc_gpd, scale_gpd = stats.genpareto.fit(self.pot_data-self.opt_threshold, floc = 0)
             return [self.opt_threshold, scale_gpd, shape_gpd]
 
@@ -287,7 +450,7 @@ class ExtremeCorrection():
             # return [loc_gpd, scale_gpd, shape_gpd]
             # return [loc_expon, scale_expon, 0.0]
         
-        elif self.method == "AnnMax":
+        elif self.method == "am":
             shape_gev, loc_gev, scale_gev = stats.genextreme.fit(self.max_data, 0)
             return [loc_gev, scale_gev, shape_gev]
         
@@ -298,10 +461,10 @@ class ExtremeCorrection():
             self,
             save: bool = True
     ):
-        if self.method == "POT":
+        if self.method == "pot":
             self.gpd_diag(save=save)
         
-        elif self.method == "AnnMax":
+        elif self.method == "am":
             self.gev_diag(save=save)
         
         else:
@@ -428,13 +591,11 @@ class ExtremeCorrection():
         return fig
     
     def _pot_correction(
-            self,
-            random_state
+            self
     ):
         
         # POT correction on historical data
         self.ecdf_pot_probs_hist = np.arange(1, self.n_pot + 1) / (self.n_pot + 1)   # ECDF
-        np.random.seed(random_state) # Set the random seed
         self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot))   # Random Uniform
 
         self.pot_data_corrected = stats.genpareto.ppf(                               # Corrected POTs
@@ -486,13 +647,11 @@ class ExtremeCorrection():
             Warning("Only 1 POT used in the historical correction")
 
     def _annmax_correction(
-            self,
-            random_state
+            self
     ):
 
         # AnnualMaxima correction on historical data
         self.ecdf_annmax_probs_hist = np.arange(1, self.n_year_peaks + 1) / (self.n_year_peaks + 1) # ECDF
-        np.random.seed(random_state) # Set the random seed
         self.runif_annmax_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_year_peaks))   # Random Uniform
         self.max_data_corrected = stats.genextreme.ppf(                                      # Corrected Annual Maxima
             self.runif_annmax_probs_hist,
@@ -545,12 +704,12 @@ class ExtremeCorrection():
             show_corrected=False,
             show_uncorrected=True
     ):
-        if self.method == "POT":
+        if self.method == "pot":
             self._pot_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
-        elif self.method == "AnnMax":
+        elif self.method == "am":
             self._annmax_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
@@ -876,22 +1035,19 @@ class ExtremeCorrection():
         plt.close(fig)
 
     def apply_sim_correction(
-            self,
-            random_state=0
+            self
     ):
         
-        if self.method == "POT":
-            self._pot_correction_sim(random_state)
-        elif self.method == "AnnMax":
-            self._annmax_correction_sim(random_state)
+        if self.method == "pot":
+            self._pot_correction_sim()
+        elif self.method == "am":
+            self._annmax_correction_sim()
 
-    def _pot_correction_sim(self, random_state):
+    def _pot_correction_sim(self):
 
         ### Apply Correction  in POTs 
         # POT 
         self.ecdf_pot_probs_sim = np.arange(1, self.n_pot_sim + 1) / (self.n_pot_sim + 1)   # ECDF
-        # Set the random seed
-        np.random.seed(random_state)
         self.runif_pot_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot_sim))   # Random Uniform
         self.sim_pot_data_corrected = stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])    # Corrected POT
         # If the correction is applied with exponential
@@ -939,13 +1095,11 @@ class ExtremeCorrection():
             self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
 
-    def _annmax_correction_sim(self, random_state):
+    def _annmax_correction_sim(self):
  
         # Correction           
         # Empirical distribution function for Annual Maxima
         self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)  # ECDF
-        # Set the random seed
-        np.random.seed(random_state)
         self.runif_annmax_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_sim_year_peaks))   # Random Uniform
         # Correct Annual Maxima using the fitted GEV
         self.sim_max_data_corrected = stats.genextreme.ppf(self.runif_annmax_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
@@ -985,12 +1139,12 @@ class ExtremeCorrection():
             show_uncorrected = True
     ):
         
-        if self.method == "POT":
+        if self.method == "pot":
             self._pot_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
-        elif self.method == "AnnMax":
+        elif self.method == "am":
             self._annmax_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
@@ -1204,9 +1358,9 @@ class ExtremeCorrection():
             alpha=0.2
     ):
         
-        if self.method == "POT":
+        if self.method == "pot":
             self._pot_interval_return_period_plot(alpha=alpha)
-        elif self.method == "AnnMax":
+        elif self.method == "am":
             self._annmax_interval_return_period_plot(alpha=alpha)
 
     def _pot_interval_return_period_plot(
@@ -1412,7 +1566,7 @@ class ExtremeCorrection():
 
     def test_dist(self):
 
-        if self.method == "AnnMax":
+        if self.method == "am":
             res_test = stats.cramervonmises(self.sim_max_data, 
                                             cdf=stats.genextreme.cdf,
                                             args=(self.parameters[2], self.parameters[0], self.parameters[1])
@@ -1422,7 +1576,7 @@ class ExtremeCorrection():
                 "P-value": res_test.pvalue
                 }
         
-        elif self.method == "POT":
+        elif self.method == "pot":
             res_test = stats.cramervonmises(self.sim_pot_data, 
                                             cdf=stats.genpareto.cdf,
                                             args=(self.parameters[2], self.parameters[0], self.parameters[1])
