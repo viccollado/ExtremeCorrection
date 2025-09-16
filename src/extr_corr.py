@@ -439,6 +439,14 @@ class ExtremeCorrection():
             self._annmax_correction()
 
     def extreme_fit(self):
+        """
+        Extreme fit depending on the selected extremes
+
+        Notes
+        -----
+        - If self.method="pot", apply to POT
+        - If self.method="am", apply to AM
+        """
 
         if self.method == "pot":
             shape_gpd, loc_gpd, scale_gpd = stats.genpareto.fit(self.pot_data-self.opt_threshold, floc = 0)
@@ -461,6 +469,13 @@ class ExtremeCorrection():
             self,
             save: bool = True
     ):
+        """
+        Diagnostic plot for extreme fitting
+
+        Includes:
+        - QQplot
+        - PPplot
+        """
         if self.method == "pot":
             self.gpd_diag(save=save)
         
@@ -471,7 +486,9 @@ class ExtremeCorrection():
             raise ValueError("The method is not selected")
 
     def gev_diag(self, save=True):
-        
+        """
+        Diagnostic plots for GEV fitted to AM
+        """
         # QQ plot
         fig = self.gev_qqplot()
         if save:
@@ -491,7 +508,9 @@ class ExtremeCorrection():
         plt.close(fig)
     
     def gev_qqplot(self):
-
+        """
+        GEV QQ-plot
+        """
         # Calcular cuantiles teóricos de la GPD ajustada
         probabilities = (np.arange(1, self.n_year_peaks + 1)) / (self.n_year_peaks+1)  # Probabilidades de los cuantiles empíricos
         gev_quantiles = stats.genextreme.ppf(probabilities, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
@@ -504,14 +523,14 @@ class ExtremeCorrection():
         # Etiquetas
         plt.xlabel("Theoretical Quantiles (Fitted GEV)", fontsize=LABEL_FONTSIZE)
         plt.ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
-        # plt.title("QQ-plot: Ajuste de la GEV a los Datos")
-        # plt.legend()
         plt.grid()
 
         return fig
 
     def gev_ppplot(self):
-
+        """
+        GEV PP-plot
+        """
         # Calcular cuantiles teóricos de la GPD ajustada
         probabilities = (np.arange(1, self.n_year_peaks + 1)) / (self.n_year_peaks+1)  # Probabilidades de los cuantiles empíricos
         gev_probs = stats.genextreme.cdf(self.max_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
@@ -531,7 +550,9 @@ class ExtremeCorrection():
         return fig
     
     def gpd_diag(self, save=True):
-        
+        """
+        Diagnostic plots for GPD fitted to POT
+        """
         # QQ plot
         fig = self.gpd_qqplot()
         if save:
@@ -551,7 +572,9 @@ class ExtremeCorrection():
         plt.close(fig)
     
     def gpd_qqplot(self):
-
+        """
+        GPD QQ-plot
+        """
         # Calcular cuantiles teóricos de la GPD ajustada
         probabilities = (np.arange(1, self.n_pot + 1)) / (self.n_pot+1)  # Probabilidades de los cuantiles empíricos
         gpd_quantiles = stats.genpareto.ppf(probabilities, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
@@ -571,7 +594,9 @@ class ExtremeCorrection():
         return fig
 
     def gpd_ppplot(self):
-
+        """
+        GPD PP-plot
+        """
         # Calcular cuantiles teóricos de la GPD ajustada
         probabilities = (np.arange(1, self.n_pot + 1) - 0.5) / (self.n_pot+1)  # Probabilidades de los cuantiles empíricos
         gpd_probs = stats.genpareto.cdf(self.pot_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
@@ -593,7 +618,9 @@ class ExtremeCorrection():
     def _pot_correction(
             self
     ):
-        
+        """
+        Apply POT extreme-correction
+        """  
         # POT correction on historical data
         self.ecdf_pot_probs_hist = np.arange(1, self.n_pot + 1) / (self.n_pot + 1)   # ECDF
         self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot))   # Random Uniform
@@ -649,7 +676,9 @@ class ExtremeCorrection():
     def _annmax_correction(
             self
     ):
-
+        """
+        Apply AM extreme-correction
+        """  
         # AnnualMaxima correction on historical data
         self.ecdf_annmax_probs_hist = np.arange(1, self.n_year_peaks + 1) / (self.n_year_peaks + 1) # ECDF
         self.runif_annmax_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_year_peaks))   # Random Uniform
@@ -704,6 +733,16 @@ class ExtremeCorrection():
             show_corrected=False,
             show_uncorrected=True
     ):
+        """
+        Return period plot
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
+        """
         if self.method == "pot":
             self._pot_return_period_plot(
                 show_corrected=show_corrected,
@@ -717,6 +756,10 @@ class ExtremeCorrection():
 
 
     def _pot_ci_return_period(self):
+        """
+        Compute the Confidence intervals for return periods of GPD-Poisson 
+        using the Profile-Likelihood method.
+        """
         # self.ci_T_years = np.array([1.1, 1.5, 2, 5, 7.5, 10, 20, 35, 50, 75, 100, 200, 500, 1000, 5000, 10000])
         self.ci_T_years = np.array([1.1, 2, 5, 10, 20, 50, 100, 500, 1000, 5000, 10000])
         # probs = 1 - 1 / self.ci_T_years  # Convert to exceedance probabilities
@@ -807,6 +850,17 @@ class ExtremeCorrection():
             show_corrected=False, 
             show_uncorrected=True
     ):
+        """
+        Return period of Anual Maxima using the GPD-Poisson model
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
+        """
+
         
         """ ONLY PLOT AM USING GPD-POISSON MODEL
         ###### POTs ###### 
@@ -953,6 +1007,16 @@ class ExtremeCorrection():
             show_corrected=False, 
             show_uncorrected=True
             ):
+        """
+        Return period of Anual Maxima using the GEV
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
+        """
 
         # GEV fit over a grid of x-values
         self.x_vals_gev_hist = np.linspace(self.max_data_corrected[0], self.max_data_corrected[-1], 1000)
@@ -1037,6 +1101,9 @@ class ExtremeCorrection():
     def apply_sim_correction(
             self
     ):
+        """
+        Apply extreme correction procedure in sampled data
+        """
         
         if self.method == "pot":
             self._pot_correction_sim()
@@ -1044,6 +1111,9 @@ class ExtremeCorrection():
             self._annmax_correction_sim()
 
     def _pot_correction_sim(self):
+        """
+        Apply POT extreme correction procedure in sampled data
+        """
 
         ### Apply Correction  in POTs 
         # POT 
@@ -1096,7 +1166,9 @@ class ExtremeCorrection():
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
 
     def _annmax_correction_sim(self):
- 
+        """
+        Apply AM extreme correction procedure in sampled data
+        """
         # Correction           
         # Empirical distribution function for Annual Maxima
         self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)  # ECDF
@@ -1138,6 +1210,16 @@ class ExtremeCorrection():
             show_corrected = True,
             show_uncorrected = True
     ):
+        """
+        Plot return periods of corrected in sampled data
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
+        """
         
         if self.method == "pot":
             self._pot_sim_return_period_plot(
@@ -1156,7 +1238,14 @@ class ExtremeCorrection():
             show_uncorrected=True
         ):
         """
-        Periodo de retorno de la serie simulada
+        Return period plot of AM using GPD-Poisson model
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
         """
 
         """ DEPRECATED
@@ -1282,7 +1371,14 @@ class ExtremeCorrection():
             show_uncorrected=True
         ):
         """
-        Periodo de retorno de la serie simulada
+        Return period plot of AM using GEV model
+
+        Parameters
+        ----------
+        show_corrected : bool, default=False
+            If True, show the corrected AM
+        show_uncorrected : bool, default=True
+            If True, show the uncorrected AM
         """
         
         x_vals_gev_sim = np.linspace(self.sim_max_data_corrected[0], self.sim_max_data_corrected[-1], 1000)
@@ -1357,6 +1453,7 @@ class ExtremeCorrection():
             self,
             alpha=0.2
     ):
+        """DEPRECATED"""
         
         if self.method == "pot":
             self._pot_interval_return_period_plot(alpha=alpha)
@@ -1368,6 +1465,8 @@ class ExtremeCorrection():
             alpha=0.2
     ):
         """
+        DEPRECATED
+        
         Periodo de retorno de la serie simulada dividido en intervalos de longitud el nº de años históricos
         """
 
@@ -1468,6 +1567,8 @@ class ExtremeCorrection():
             alpha=0.2
     ):
         """
+        DEPRECATED
+
         Periodo de retorno de la serie simulada dividido en intervalos de longitud el nº de años históricos
         """
 
@@ -1565,6 +1666,13 @@ class ExtremeCorrection():
 
 
     def test_dist(self):
+        """
+        Statistic test to check the goodness-of-fit of the extreme model
+
+        Notes
+        -----
+        - Use the Cramér-Von Mises test
+        """
 
         if self.method == "am":
             res_test = stats.cramervonmises(self.sim_max_data, 
