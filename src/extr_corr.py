@@ -622,20 +622,25 @@ class ExtremeCorrection():
         Apply POT extreme-correction
         """  
         # POT correction on historical data
-        self.ecdf_pot_probs_hist = np.arange(1, self.n_pot + 1) / (self.n_pot + 1)   # ECDF
-        self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot))   # Random Uniform
+        self.ecdf_pot_probs_hist = np.arange(1, self.n_year_peaks + 1) / (self.n_year_peaks + 1)   # ECDF
+        self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_year_peaks))   # Random Uniform
+        # self.ecdf_pot_probs_hist = np.arange(1, self.n_pot + 1) / (self.n_pot + 1)   # ECDF
+        # self.runif_pot_probs_hist = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot))   # Random Uniform
 
-        self.pot_data_corrected = stats.genpareto.ppf(                               # Corrected POTs
-            self.runif_pot_probs_hist,
-            self.parameters[2],
-            loc=self.parameters[0],
-            scale=self.parameters[1]
-        )
+        # Correct in the AM using the POT model (GPD+Poisson)
+        self.max_data_corrected = q_pot(self.runif_pot_probs_hist, self.parameters, self.poiss_parameter)
+        # self.pot_data_corrected = stats.genpareto.ppf(                               # Corrected POTs
+        #     self.runif_pot_probs_hist,
+        #     self.parameters[2],
+        #     loc=self.parameters[0],
+        #     scale=self.parameters[1]
+        # )
 
         # Copy point-in-time data
         # aux_pit_corrected = self.pit_data.copy()
 
-        if self.n_pot > 1:
+        if self.n_year_peaks > 1:
+        # if self.n_pot > 1:
             
             # # Mask to interpolate
             # mask = aux_pit_corrected > self.pot_data_sorted[0]
@@ -656,13 +661,18 @@ class ExtremeCorrection():
             # Interpolate in the peak range
             aux_pit_corrected = np.interp(
                 self.pit_data,           # x-coords to interpolate
-                np.append(min(self.pit_data), self.pot_data_sorted),   # x-coords of data points
-                np.append(min(self.pit_data), self.pot_data_corrected) # y-coords of data points
+                np.append(min(self.pit_data), self.max_data_sorted),   # x-coords of data points
+                np.append(min(self.pit_data), self.max_data_corrected) # y-coords of data points
             )
+            # aux_pit_corrected = np.interp(
+            #     self.pit_data,           # x-coords to interpolate
+            #     np.append(min(self.pit_data), self.pot_data_sorted),   # x-coords of data points
+            #     np.append(min(self.pit_data), self.pot_data_corrected) # y-coords of data points
+            # )
 
             # Store corrected data
             self.pit_data_corrected = aux_pit_corrected
-            self.max_data_corrected = aux_pit_corrected[self.max_idx]
+            # self.max_data_corrected = aux_pit_corrected[self.max_idx]
             self.max_data_corrected_sort = np.sort(self.max_data_corrected)
         
         else:
@@ -731,7 +741,8 @@ class ExtremeCorrection():
     def return_period_plot(
             self,
             show_corrected=False,
-            show_uncorrected=True
+            show_uncorrected=True,
+            conf_int_method: str="bootstrap"
     ):
         """
         Return period plot
@@ -744,24 +755,54 @@ class ExtremeCorrection():
             If True, show the uncorrected AM
         """
         if self.method == "pot":
-            self._pot_return_period_plot(
+            fig, ax = self._pot_return_period_plot(
                 show_corrected=show_corrected,
-                show_uncorrected=show_uncorrected
+                show_uncorrected=show_uncorrected,
+                conf_int_method=conf_int_method
             )
         elif self.method == "am":
-            self._annmax_return_period_plot(
+            fig, ax = self._annmax_return_period_plot(
                 show_corrected=show_corrected,
-                show_uncorrected=show_uncorrected
+                show_uncorrected=show_uncorrected,
+                conf_int_method=conf_int_method
             )
+        return fig, ax
 
+    def _pot_ci_return_period_bootstrap(self, B: int=1000):
+        """
+        Compute the Confidence intervals for return periods of GPD-Poisson based on Bootstrap method.
 
-    def _pot_ci_return_period(self):
+        Parameters
+        ----------
+        B : int, default=1000
+            Number of bootstrap samples.
+        """
+
+        self.ci_T_years = np.array([1.001, 1.01, 1.1, 1.2, 1.4, 1.6, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 150, 200, 500, 1000])
+        probs_ci = 1 - 1 / self.ci_T_years # Convert to exceedance probabilities
+
+        # Generate all bootstrap samples at once
+        boot_samples = np.random.choice(self.pot_data, size=(B, self.n_pot), replace=True)
+        
+        # Vectorized parameter fitting
+        boot_params = np.zeros((B, 3))
+        for i in range(B):
+            shape, _, scale = stats.genpareto.fit(boot_samples[i] - self.opt_threshold, floc=0)
+            boot_params[i] = [self.opt_threshold, scale, shape]
+
+        # Vectorized return period computation
+        return_periods = np.array([q_pot(probs_ci, params, self.poiss_parameter) for params in boot_params])
+
+        self.lower_pot_ci_return = np.quantile(return_periods, (1 - self.conf) / 2, axis=0)
+        self.upper_pot_ci_return = np.quantile(return_periods, 1 - (1 - self.conf) / 2, axis=0)
+
+    def _pot_ci_return_period_proflik(self):
         """
         Compute the Confidence intervals for return periods of GPD-Poisson 
         using the Profile-Likelihood method.
         """
-        # self.ci_T_years = np.array([1.1, 1.5, 2, 5, 7.5, 10, 20, 35, 50, 75, 100, 200, 500, 1000, 5000, 10000])
-        self.ci_T_years = np.array([1.1, 2, 5, 10, 20, 50, 100, 500, 1000, 5000, 10000])
+        self.ci_T_years = np.array([1.001, 1.01, 1.1, 1.2, 1.4, 1.6, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 150, 200, 500, 1000])
+        # self.ci_T_years = np.array([1.1, 1.5, 2, 3, 4, 5, 7.5, 10, 15, 20, 50, 100, 500, 1000, 5000, 10000])
         # probs = 1 - 1 / self.ci_T_years  # Convert to exceedance probabilities
 
         # Optimal Negative Loglikelihood
@@ -773,24 +814,29 @@ class ExtremeCorrection():
         
         for idx, year in enumerate(self.ci_T_years):
             # Initial bounds for confidence interval based on return period
-            xlow = min(0, -year//10)    # Decrease lower bound for larger return periods
+            # xlow = min(0.1, -year//10)    # Decrease lower bound for larger return periods
+            xlow = 5
             xup = max(500, year * 5)    # Increase upper bound for larger return periods
+            xup = 40 + year
             
             try:
                 conf_int = gpdpoiss_rp_plik(params, nll_opt, self.pit_data, m=year, 
                                         n_years=self.n_year_peaks, 
                                         xlow=xlow, xup=xup,
-                                        plot=False, nint=500, conf=self.conf)
+                                        nint=2000, conf=self.conf, 
+                                        plot=True, save_file=f"{year}")
                 lower_pot_ci_return[idx] = conf_int[0]
                 upper_pot_ci_return[idx] = conf_int[1]
             except ValueError:
                 # If bounds were insufficient, try with wider bounds
                 xup = xup * 2
+                xlow = xlow - xlow/2
                 try:
                     conf_int = gpdpoiss_rp_plik(params, nll_opt, self.pit_data, m=year, 
                                             n_years=self.n_year_peaks, 
                                             xlow=xlow, xup=xup, 
-                                            plot=False, nint=500, conf=self.conf)
+                                            nint=2000, conf=self.conf, 
+                                            plot=True, save_file=f"{year}")
                     lower_pot_ci_return[idx] = conf_int[0]
                     upper_pot_ci_return[idx] = conf_int[1]
                 except ValueError as e:
@@ -848,7 +894,8 @@ class ExtremeCorrection():
     def _pot_return_period_plot(
             self, 
             show_corrected=False, 
-            show_uncorrected=True
+            show_uncorrected=True,
+            conf_int_method: str = "bootstrap"
     ):
         """
         Return period of Anual Maxima using the GPD-Poisson model
@@ -914,7 +961,11 @@ class ExtremeCorrection():
         T_pt_corrected_hist = 1.0 / (1.0 - ecdf_pt_probs_corrected_hist) / self.freq #/ n_return_period[wt] 
         
         # Compute Estimated Return Periods and Confidence Intervals
-        self._pot_ci_return_period()
+        if conf_int_method == "bootstrap":
+            self._pot_ci_return_period_bootstrap()
+        else:
+            self._pot_ci_return_period_proflik()
+
         self.x_vals_gpd_poiss_hist = q_pot(1 - 1 / self.ci_T_years, self.parameters, self.poiss_parameter)
         
         ###### Annual Maxima GPD-Poisson ######
@@ -949,8 +1000,8 @@ class ExtremeCorrection():
 
 
         ### Gráfico
-        fig = plt.figure(figsize=(12,8))
-        ax= fig.add_subplot()
+        fig, ax = plt.subplots(figsize=(12,8))
+        # ax= fig.add_subplot()
         # DEPRECATED
         # # Fitted GPD
         # ax.semilogx(self.T_gpd_fitted, np.sort(self.x_vals_gpd_hist), color = 'orange',linestyle='dashed', linewidth=2.5, label='Fitted GPD')
@@ -982,7 +1033,7 @@ class ExtremeCorrection():
         if show_uncorrected:
             # ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
             # ax.semilogx(self.T_pot_hist, self.pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POTs')
-            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
+            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Historical Annual Maxima')
 
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
@@ -998,14 +1049,17 @@ class ExtremeCorrection():
         # ax.set_ylim(0, 100)
         ax.legend(loc='best',fontsize=LEGEND_FONTSIZE)
         ax.grid()
-        if self.folder is not None:
-            plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
+        # if self.folder is not None:
+        #     plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
+        # plt.close(fig)
+
+        return fig, ax
 
     def _annmax_return_period_plot(
             self, 
             show_corrected=False, 
-            show_uncorrected=True
+            show_uncorrected=True,
+            conf_int_method: str = "bootstrap"
             ):
         """
         Return period of Anual Maxima using the GEV
@@ -1096,7 +1150,9 @@ class ExtremeCorrection():
         ax.grid()
         if self.folder is not None:
             plt.savefig(f"{self.folder}/Historical_ReturnPeriod.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
+        # plt.close(fig)
+
+        return ax
 
     def apply_sim_correction(
             self,
@@ -1120,9 +1176,28 @@ class ExtremeCorrection():
 
         ### Apply Correction  in POTs 
         # POT 
-        self.ecdf_pot_probs_sim = np.arange(1, self.n_pot_sim + 1) / (self.n_pot_sim + 1)   # ECDF
-        self.runif_pot_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot_sim))   # Random Uniform
-        self.sim_pot_data_corrected = stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])    # Corrected POT
+        # self.ecdf_pot_probs_sim = np.arange(1, self.n_pot_sim + 1) / (self.n_pot_sim + 1)   # ECDF
+        # self.runif_pot_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_pot_sim))   # Random Uniform
+        # self.sim_pot_data_corrected = stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])    # Corrected POT
+        
+        # Correct in AM using POT model (GPD+Poisson)
+        self.am_index_0 = 0
+        for idx, value in enumerate(self.sim_max_data_sorted):
+            if value == 0:
+                self.am_index_0 +=1
+            else:
+                break
+
+        self.sim_max_data_corrected = np.zeros(self.n_sim_year_peaks)
+
+        # self.ecdf_max_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)   # ECDF
+        # self.runif_max_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_sim_year_peaks - self.am_index_0))   # Random Uniform
+        self.runif_max_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_sim_year_peaks))   # Random Uniform
+        self.sim_max_data_corrected[self.am_index_0:] = q_pot(self.runif_max_probs_sim[self.am_index_0:], self.parameters, self.poiss_parameter)    # Corrected POT
+        # for i in range(self.n_sim_year_peaks):
+        #     if self.sim_max_data_sorted[i] == 0:
+        #         self.sim_max_data_corrected[i] = 0
+        
         # If the correction is applied with exponential
         # self.sim_pot_data_corrected = stats.expon.ppf(self.ecdf_pot_probs_sim, loc=0.0, scale=self.parameters[1])    # Corrected POT
         
@@ -1134,7 +1209,8 @@ class ExtremeCorrection():
         # Correct point-in-time data 
         # sim_aux_pit_corrected = self.sim_pit_data.copy()  # Copy original array
         
-        if self.n_pot_sim > 1:
+        # if self.n_pot_sim > 1:
+        if self.n_sim_year_peaks > 1:
             # # Create a boolean mask for values above the first “peak_values[0]”
             # mask = sim_aux_pit_corrected > self.sim_pot_data_sorted[0]
             # # Clip the values to interpolate
@@ -1153,13 +1229,18 @@ class ExtremeCorrection():
 
             sim_aux_pit_corrected = np.interp(
                 self.sim_pit_data,              # x-coords to interpolate
-                np.append(min(self.sim_pit_data), self.sim_pot_data_sorted),    # x-coords of data points
-                np.append(min(self.sim_pit_data), self.sim_pot_data_corrected)  # y-coords of data points 
+                np.append(min(self.sim_pit_data), self.sim_max_data_sorted),    # x-coords of data points
+                np.append(min(self.sim_pit_data), self.sim_max_data_corrected)  # y-coords of data points 
             )
+            # sim_aux_pit_corrected = np.interp(
+            #     self.sim_pit_data,              # x-coords to interpolate
+            #     np.append(min(self.sim_pit_data), self.sim_pot_data_sorted),    # x-coords of data points
+            #     np.append(min(self.sim_pit_data), self.sim_pot_data_corrected)  # y-coords of data points 
+            # )
             
             # Store the corrected data
             self.sim_pit_data_corrected = sim_aux_pit_corrected
-            self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
+            # self.sim_max_data_corrected = sim_aux_pit_corrected[self.sim_max_idx]
             self.sim_max_data_corrected_sorted = np.sort(self.sim_max_data_corrected)
         else:
             Warning("Not enough sampled POTs to apply the correction")
@@ -1225,15 +1306,16 @@ class ExtremeCorrection():
         """
         
         if self.method == "pot":
-            self._pot_sim_return_period_plot(
+            fig, ax = self._pot_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
         elif self.method == "am":
-            self._annmax_sim_return_period_plot(
+            fig, ax = self._annmax_sim_return_period_plot(
                 show_corrected=show_corrected,
                 show_uncorrected=show_uncorrected
             )
+        return fig, ax
     
     def _pot_sim_return_period_plot(
             self, 
@@ -1286,14 +1368,16 @@ class ExtremeCorrection():
         T_pt_corrected_sim = 1.0 / (1.0 - ecdf_pt_probs_corrected_sim) / self.freq #/ n_return_period[wt] 
         
         ###### Annual Maxima GPD-Poisson ######
-        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)
-        self.T_annmax_sim = 1 / (1-self.ecdf_annmax_probs_sim)
+        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1 - self.am_index_0) / (self.n_sim_year_peaks + 1 - self.am_index_0)
+        self.T_annmax_sim = 1 / (1-self.ecdf_annmax_probs_sim) 
 
         # GPD-Poisson fit over a grid of x-values
         self.x_vals_gpd_poiss_sim = np.linspace(self.sim_max_data_corrected_sorted[0], self.sim_max_data_corrected_sorted[-1], 1000)
         # Return period from GPD-Poisson fit
         gpd_poiss_probs_fitted_sim = cdf_pot(self.x_vals_gpd_poiss_sim, self.parameters[0], self.poiss_parameter, self.parameters[1], self.parameters[2])
         self.T_gpd_poiss_fitted_sim = 1.0 / (1.0 - gpd_poiss_probs_fitted_sim)
+
+        self.x_vals_gpd_poiss_sim = q_pot(1 - 1 / self.ci_T_years, self.parameters, self.poiss_parameter)
 
         # GPD-Poisson Corrected peaks: re-check CDF and return periods
         ecdf_annmax_probs_corrected_sim = cdf_pot(
@@ -1329,7 +1413,7 @@ class ExtremeCorrection():
         # ax.semilogx(self.T_gpd_poiss_fitted_sim, self.stdlo_gpd_poiss_sim, color = "tab:gray",linestyle='dotted')
         
         # Fitted GPD-Poisson
-        ax.semilogx(self.ci_T_years, self.x_vals_gpd_poiss_hist, color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
+        ax.semilogx(self.ci_T_years, self.x_vals_gpd_poiss_sim, color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
         # Confidence interval for fitted GPD-Poisson
         ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
         ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "tab:gray",linestyle='dotted')
@@ -1341,14 +1425,14 @@ class ExtremeCorrection():
             # ax.semilogx(T_ev_corrected_sim, stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), 
             #             color = 'orange',linewidth=0, marker='o',markersize=5, label=f'Corrected POT')
             # ax.semilogx(self.T_annmax_sim, q_pot(self.ecdf_annmax_probs_sim, self.opt_threshold, self.poiss_parameter, self.gpd_parameters[1], self.gpd_parameters[2]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted, color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted[self.am_index_0:], color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
             label = label+"_Corr"
         
         # No corrected data
         if show_uncorrected:
             # ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
             # ax.semilogx(T_pot_sim, self.sim_pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POT')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted[self.am_index_0:], color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
             label = label+"_NoCorr"
 
     
@@ -1366,7 +1450,9 @@ class ExtremeCorrection():
         ax.grid()
         if self.folder is not None:
             plt.savefig(f"{self.folder}/Simulation_ReturnPeriod{label}.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
+        # plt.close(fig)
+
+        return fig, ax
 
     def _annmax_sim_return_period_plot(
             self, 
@@ -1450,7 +1536,8 @@ class ExtremeCorrection():
         ax.grid()
         if self.folder is not None:
             plt.savefig(f"{self.folder}/Simulation_ReturnPeriod{label}.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
+        # plt.close(fig)
+        return fig, ax
 
     def interval_return_period_plot(
             self,
@@ -1688,11 +1775,45 @@ class ExtremeCorrection():
                 }
         
         elif self.method == "pot":
-            res_test = stats.cramervonmises(self.sim_pot_data, 
-                                            cdf=stats.genpareto.cdf,
-                                            args=(self.parameters[2], self.parameters[0], self.parameters[1])
+            gev_location = self.parameters[0] + (self.parameters[1] * (1 - self.poiss_parameter ** self.parameters[2])) / self.parameters[2]
+            gev_scale = self.parameters[1] * self.poiss_parameter ** self.parameters[2]
+
+            # POT test
+            # res_test = stats.cramervonmises(self.sim_pot_data, 
+            #                                 cdf=stats.genpareto.cdf,
+            #                                 args=(self.parameters[2], self.parameters[0], self.parameters[1])
+            #                                 )
+
+            # AM test to derived GEV from GPD-Poisson
+            res_test = stats.cramervonmises(self.sim_max_data, 
+                                            cdf=stats.genextreme.cdf,
+                                            args=(self.parameters[2], gev_location, gev_scale)
                                             )
             return {
                 "Statistic": res_test.statistic, 
                 "P-value": res_test.pvalue
                 }
+
+    def correlation(self):
+        """
+        Correlation between sampled and corrected sampled data
+
+        Returns
+        -------
+        dict :
+            Dictionary with Spearman, Kendall and Pearson correlation coefficients.
+            Keys :
+            - "Spearman" : Spearman correlation coefficient
+            - "Kendall" : Kendall correlation coefficient
+            - "Pearson" : Pearson correlation coefficient
+        """
+
+        spearman_corr, _ = stats.spearmanr(self.sim_pit_data, self.sim_pit_data_corrected)
+        kendall_corr, _ = stats.kendalltau(self.sim_pit_data, self.sim_pit_data_corrected)
+        pearson_corr, _ = stats.pearsonr(self.sim_pit_data, self.sim_pit_data_corrected)
+
+        return {
+            "Spearman": spearman_corr,
+            "Kendall": kendall_corr,
+            "Pearson": pearson_corr
+        }
