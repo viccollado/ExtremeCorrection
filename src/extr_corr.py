@@ -296,7 +296,7 @@ class ExtremeCorrection():
         """
 
         # Obtain optimal threshold and POTs of historical data
-        self.pot_data, self.pot_data_sorted = self.obtain_pots(
+        self.pot_data, self.pot_data_sorted, self.pot_data_locs = self.obtain_pots(
             self.pit_data,
             n0 = self.pot_config['n0'], 
             min_peak_distance = self.pot_config['min_peak_distance'], 
@@ -317,7 +317,7 @@ class ExtremeCorrection():
             tolerance = self.poiss_parameter/100
 
         # POT of simulated data
-        self.sim_pot_data, self.sim_pot_data_sorted = self.obtain_pots(
+        self.sim_pot_data, self.sim_pot_data_sorted, self.sim_pot_data_locs = self.obtain_pots(
             self.sim_pit_data,
             threshold=self.opt_threshold,
             n0 = self.pot_config['n0'],
@@ -413,8 +413,9 @@ class ExtremeCorrection():
         
         pot = opt_thres.pks
         pot_sorted = np.sort(pot)
+        locs = opt_thres.locs
 
-        return pot, pot_sorted
+        return pot, pot_sorted, locs
 
     def apply_correction(
             self,
@@ -554,21 +555,55 @@ class ExtremeCorrection():
         Diagnostic plots for GPD fitted to POT
         """
         # QQ plot
-        fig = self.gpd_qqplot()
-        if save:
-            if self.folder:  # Ensure folder is specified
-                plt.savefig(f"{self.folder}/QQPlot.png", dpi=300, bbox_inches='tight')
-            else:
-                print("Warning: No folder path specified in config. Saving skipped.")
-        plt.close(fig)
+        # fig = self.gpd_qqplot()
+        # if save:
+        #     if self.folder:  # Ensure folder is specified
+        #         plt.savefig(f"{self.folder}/QQPlot.png", dpi=300, bbox_inches='tight')
+        #     else:
+        #         print("Warning: No folder path specified in config. Saving skipped.")
+        # plt.close(fig)
 
-        # PP plot
-        fig = self.gpd_ppplot()
+        # # PP plot
+        # fig = self.gpd_ppplot()
+        # if save:
+        #     if self.folder:
+        #         plt.savefig(f"{self.folder}/PPPlot.png", dpi=300, bbox_inches='tight')
+        #     else:
+        #         print("Warning: No folder path specified in config. Saving skipped.")
+        # plt.close(fig)
+
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 12))
+    
+        # QQ plot (top)
+        probabilities_qq = (np.arange(1, self.n_pot + 1)) / (self.n_pot+1)
+        gpd_quantiles = stats.genpareto.ppf(probabilities_qq, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
+        
+        ax1.scatter(gpd_quantiles, self.pot_data_sorted, label="Data vs GPD", alpha=0.7)
+        ax1.plot(gpd_quantiles, gpd_quantiles, 'r--', label="y = x (Reference)")
+        ax1.set_xlabel("Theoretical Quantiles (Fitted GPD)", fontsize=LABEL_FONTSIZE)
+        ax1.set_ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
+        ax1.set_title("QQ-plot", fontsize=LABEL_FONTSIZE)
+        ax1.grid()
+        
+        # PP plot (bottom)
+        probabilities_pp = (np.arange(1, self.n_pot + 1) - 0.5) / (self.n_pot+1)
+        gpd_probs = stats.genpareto.cdf(self.pot_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
+        
+        ax2.scatter(gpd_probs, probabilities_pp, label="Empirical vs GPD", alpha=0.7)
+        ax2.plot([0, 1], [0, 1], 'r--', label="y = x (Reference)")
+        ax2.set_xlabel("Theoretical Probabilities (GPD)", fontsize=LABEL_FONTSIZE)
+        ax2.set_ylabel("Empirical Probabilities", fontsize=LABEL_FONTSIZE)
+        ax2.set_title("PP-plot", fontsize=LABEL_FONTSIZE)
+        ax2.grid()
+        
+        plt.tight_layout()
+        
         if save:
             if self.folder:
-                plt.savefig(f"{self.folder}/PPPlot.png", dpi=300, bbox_inches='tight')
+                plt.savefig(f"{self.folder}/DiagnosticPlots.png", dpi=300, bbox_inches='tight')
             else:
                 print("Warning: No folder path specified in config. Saving skipped.")
+        
         plt.close(fig)
     
     def gpd_qqplot(self):
@@ -778,7 +813,7 @@ class ExtremeCorrection():
             Number of bootstrap samples.
         """
 
-        self.ci_T_years = np.array([1.001, 1.01, 1.1, 1.2, 1.4, 1.6, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 150, 200, 500, 1000])
+        self.ci_T_years = np.array([1.001, 1.01, 1.1, 1.2, 1.4, 1.6, 2, 2.5, 3, 3.5, 4, 4.5, 5, 7.5, 10, 12.5, 15, 17.5, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 150, 200, 500, 1000, 10000])
         probs_ci = 1 - 1 / self.ci_T_years # Convert to exceedance probabilities
 
         # Generate all bootstrap samples at once
@@ -1019,8 +1054,8 @@ class ExtremeCorrection():
         # Fitted GPD-Poisson
         ax.semilogx(self.ci_T_years, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
         # Confidence interval for fitted GPD-Poisson
-        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "tab:gray",linestyle='dotted', label=f'{self.conf} Conf. Band')
-        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "tab:gray",linestyle='dotted')
+        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "black", linestyle='dotted', linewidth=2.5, label=f'{self.conf} Conf. Band')
+        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "black", linestyle='dotted', linewidth=2.5)
 
         # Corrected data 
         if show_corrected:
@@ -1033,7 +1068,7 @@ class ExtremeCorrection():
         if show_uncorrected:
             # ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
             # ax.semilogx(self.T_pot_hist, self.pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POTs')
-            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Historical Annual Maxima')
+            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=8, label='Historical Annual Maxima')
 
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)

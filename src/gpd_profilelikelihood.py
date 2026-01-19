@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import chi2
-from scipy.optimize import minimize, root_scalar, minimize_scalar
+from scipy.optimize import minimize, root_scalar
 from scipy.interpolate import interp1d
 
 from .pot_utils import q_pot, nll_pot

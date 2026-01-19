@@ -38,7 +38,7 @@ def dq_gev(prob,p):
     Returns:
         Dq (np.array): Derivative of quantile function
     """
-    xi = -p[2]
+    xi = p[2]
     mu = p[0]
     sigma = p[1]
 
@@ -63,7 +63,7 @@ def q_gev(prob, p):
     """
     Quantile function of GEV
     """
-    xi = -p[2]
+    xi = p[2]
     mu = p[0]
     sigma = p[1]
 
