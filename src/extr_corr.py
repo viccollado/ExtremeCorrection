@@ -580,21 +580,26 @@ class ExtremeCorrection():
         
         ax1.scatter(gpd_quantiles, self.pot_data_sorted, label="Data vs GPD", alpha=0.7)
         ax1.plot(gpd_quantiles, gpd_quantiles, 'r--', label="y = x (Reference)")
-        ax1.set_xlabel("Theoretical Quantiles (Fitted GPD)", fontsize=LABEL_FONTSIZE)
-        ax1.set_ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
-        ax1.set_title("QQ-plot", fontsize=LABEL_FONTSIZE)
+        ax1.set_xlabel("Theoretical Quantiles (Fitted GPD)", fontsize=20)
+        ax1.set_ylabel("Empirical Quantiles (Data)", fontsize=20)
+        ax1.set_title("QQ-plot", fontsize=20)
         ax1.grid()
-        
+        ax1.tick_params(axis='both', which='major', labelsize=18)
+        ax1.tick_params(axis='both', which='minor', labelsize=18)
+        ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.1f'))
+
         # PP plot (bottom)
         probabilities_pp = (np.arange(1, self.n_pot + 1) - 0.5) / (self.n_pot+1)
         gpd_probs = stats.genpareto.cdf(self.pot_data_sorted, c=self.parameters[2], loc=self.parameters[0], scale=self.parameters[1])
         
         ax2.scatter(gpd_probs, probabilities_pp, label="Empirical vs GPD", alpha=0.7)
         ax2.plot([0, 1], [0, 1], 'r--', label="y = x (Reference)")
-        ax2.set_xlabel("Theoretical Probabilities (GPD)", fontsize=LABEL_FONTSIZE)
-        ax2.set_ylabel("Empirical Probabilities", fontsize=LABEL_FONTSIZE)
-        ax2.set_title("PP-plot", fontsize=LABEL_FONTSIZE)
+        ax2.set_xlabel("Theoretical Probabilities (GPD)", fontsize=20)
+        ax2.set_ylabel("Empirical Probabilities", fontsize=20)
+        ax2.set_title("PP-plot", fontsize=20)
         ax2.grid()
+        ax2.tick_params(axis='both', which='major', labelsize=18)
+        ax2.tick_params(axis='both', which='minor', labelsize=18)
         
         plt.tight_layout()
         
@@ -1052,10 +1057,10 @@ class ExtremeCorrection():
         # ax.semilogx(self.T_gpd_poiss_fitted, self.stdlo_gpd_poiss, color = "tab:gray",linestyle='dotted')
         
         # Fitted GPD-Poisson
-        ax.semilogx(self.ci_T_years, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', linewidth=2.5, label='Fitted GPD-Poisson')
+        ax.semilogx(self.ci_T_years, np.sort(self.x_vals_gpd_poiss_hist), color = 'red',linestyle='dashed', linewidth=3, label='Fitted GPD-Poisson')
         # Confidence interval for fitted GPD-Poisson
-        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "black", linestyle='dotted', linewidth=2.5, label=f'{self.conf} Conf. Band')
-        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "black", linestyle='dotted', linewidth=2.5)
+        ax.semilogx(self.ci_T_years, self.upper_pot_ci_return, color = "black", linestyle='dotted', linewidth=3, label=f'{self.conf} Conf. Band')
+        ax.semilogx(self.ci_T_years, self.lower_pot_ci_return, color = "black", linestyle='dotted', linewidth=3)
 
         # Corrected data 
         if show_corrected:
@@ -1068,7 +1073,7 @@ class ExtremeCorrection():
         if show_uncorrected:
             # ax.semilogx(T_pt_corrected_hist, self.pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
             # ax.semilogx(self.T_pot_hist, self.pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POTs')
-            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=8, label='Historical Annual Maxima')
+            ax.semilogx(self.T_annmax, self.max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=10, label='Historical Annual Maxima')
 
 
         ax.set_xlabel("Return Periods (Years)", fontsize=LABEL_FONTSIZE)
