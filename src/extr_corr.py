@@ -584,6 +584,9 @@ class ExtremeCorrection():
         ax1.set_ylabel("Empirical Quantiles (Data)", fontsize=LABEL_FONTSIZE)
         ax1.set_title("QQ-plot", fontsize=LABEL_FONTSIZE)
         ax1.grid()
+
+        ax1.tick_params(axis='both', which='major', labelsize=18)
+        ax1.tick_params(axis='both', which='minor', labelsize=18)
         
         # PP plot (bottom)
         probabilities_pp = (np.arange(1, self.n_pot + 1) - 0.5) / (self.n_pot+1)
@@ -595,6 +598,9 @@ class ExtremeCorrection():
         ax2.set_ylabel("Empirical Probabilities", fontsize=LABEL_FONTSIZE)
         ax2.set_title("PP-plot", fontsize=LABEL_FONTSIZE)
         ax2.grid()
+
+        ax2.tick_params(axis='both', which='major', labelsize=18)
+        ax2.tick_params(axis='both', which='minor', labelsize=18)
         
         plt.tight_layout()
         
@@ -1218,12 +1224,14 @@ class ExtremeCorrection():
         # Correct in AM using POT model (GPD+Poisson)
         self.am_index_0 = 0
         for idx, value in enumerate(self.sim_max_data_sorted):
-            if value == 0:
+            if value == 0 or value < self.opt_threshold:
                 self.am_index_0 +=1
             else:
                 break
 
         self.sim_max_data_corrected = np.zeros(self.n_sim_year_peaks)
+        for i in range(self.am_index_0):
+            self.sim_max_data_corrected[i] = self.sim_max_data_sorted[i]
 
         # self.ecdf_max_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)   # ECDF
         # self.runif_max_probs_sim = np.sort(np.random.uniform(low=0, high=1, size=self.n_sim_year_peaks - self.am_index_0))   # Random Uniform
@@ -1403,7 +1411,8 @@ class ExtremeCorrection():
         T_pt_corrected_sim = 1.0 / (1.0 - ecdf_pt_probs_corrected_sim) / self.freq #/ n_return_period[wt] 
         
         ###### Annual Maxima GPD-Poisson ######
-        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1 - self.am_index_0) / (self.n_sim_year_peaks + 1 - self.am_index_0)
+        self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1) / (self.n_sim_year_peaks + 1)
+        # self.ecdf_annmax_probs_sim = np.arange(1, self.n_sim_year_peaks + 1 - self.am_index_0) / (self.n_sim_year_peaks + 1 - self.am_index_0)
         self.T_annmax_sim = 1 / (1-self.ecdf_annmax_probs_sim) 
 
         # GPD-Poisson fit over a grid of x-values
@@ -1460,14 +1469,18 @@ class ExtremeCorrection():
             # ax.semilogx(T_ev_corrected_sim, stats.genpareto.ppf(self.runif_pot_probs_sim, self.parameters[2], loc=self.parameters[0], scale=self.parameters[1]), 
             #             color = 'orange',linewidth=0, marker='o',markersize=5, label=f'Corrected POT')
             # ax.semilogx(self.T_annmax_sim, q_pot(self.ecdf_annmax_probs_sim, self.opt_threshold, self.poiss_parameter, self.gpd_parameters[1], self.gpd_parameters[2]), color = 'red',linewidth=0, marker='o',markersize=3, label=r'Corrected Annual Maxima')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted[self.am_index_0:], color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
+            
+            # ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted[self.am_index_0:], color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_corrected_sorted, color = 'red',linewidth=0, marker='^',markersize=5, label=r'Corrected Annual Maxima')
             label = label+"_Corr"
         
         # No corrected data
         if show_uncorrected:
             # ax.semilogx(T_pt_corrected_sim, self.sim_pit_data_sorted, color="tab:blue", linewidth=0, marker='o',markersize=10, fillstyle='none',markerfacecolor='none', markeredgecolor = "tab:blue", label='Daily Data')
             # ax.semilogx(T_pot_sim, self.sim_pot_data_sorted, color="orange", linewidth=0, marker='o',markersize=5, label='POT')
-            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted[self.am_index_0:], color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
+            
+            # ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted[self.am_index_0:], color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
+            ax.semilogx(self.T_annmax_sim, self.sim_max_data_sorted, color="tab:blue", linewidth=0, marker='^',markersize=5, label='Annual Maxima')
             label = label+"_NoCorr"
 
     
