@@ -19,6 +19,10 @@ from .optimal_threshold_studentized import OptimalThreshold
 # from .gpd_utils import dq_gpd, nll_gpd, q_gpd
 from .pot_utils import cdf_pot, nll_pot, q_pot
 
+# Colores
+rojo = "#D81B60" 
+azul = "#1E88E5"
+amarillo = "#FFC107"
 
 class ExtremeCorrection:
     """
@@ -636,8 +640,8 @@ class ExtremeCorrection:
             scale=self.parameters[1],
         )
 
-        ax1.scatter(gpd_quantiles, self.pot_data_sorted, label="Data vs GPD", alpha=0.7)
-        ax1.plot(gpd_quantiles, gpd_quantiles, "r--", label="y = x (Reference)")
+        ax1.scatter(gpd_quantiles, self.pot_data_sorted, label="Data vs GPD", alpha=0.7, color=azul)
+        ax1.plot(gpd_quantiles, gpd_quantiles, linestyle="dashed", color=rojo, label="y = x (Reference)")
         ax1.set_xlabel("Theoretical Quantiles (Fitted GPD)", fontsize=20)
         ax1.set_ylabel("Empirical Quantiles (Data)", fontsize=20)
         ax1.set_title("QQ-plot", fontsize=20)
@@ -655,8 +659,8 @@ class ExtremeCorrection:
             scale=self.parameters[1],
         )
 
-        ax2.scatter(gpd_probs, probabilities_pp, label="Empirical vs GPD", alpha=0.7)
-        ax2.plot([0, 1], [0, 1], "r--", label="y = x (Reference)")
+        ax2.scatter(gpd_probs, probabilities_pp, label="Empirical vs GPD", alpha=0.7, color=azul)
+        ax2.plot([0, 1], [0, 1], linestyle="dashed", color=rojo, label="y = x (Reference)")
         ax2.set_xlabel("Theoretical Probabilities (GPD)", fontsize=20)
         ax2.set_ylabel("Empirical Probabilities", fontsize=20)
         ax2.set_title("PP-plot", fontsize=20)
@@ -1277,7 +1281,7 @@ class ExtremeCorrection:
         ax.semilogx(
             self.ci_T_years,
             np.sort(self.x_vals_gpd_poiss_hist),
-            color="red",
+            color=rojo,
             linestyle="dashed",
             linewidth=3,
             label="Fitted GPD-Poisson",
@@ -1307,7 +1311,7 @@ class ExtremeCorrection:
             ax.semilogx(
                 self.T_annmax,
                 self.max_data_corrected_sort,
-                color="red",
+                color=rojo,
                 linewidth=0,
                 marker="o",
                 markersize=3,
@@ -1321,7 +1325,7 @@ class ExtremeCorrection:
             ax.semilogx(
                 self.T_annmax,
                 self.max_data_sorted,
-                color="tab:blue",
+                color=azul,
                 linewidth=0,
                 marker="^",
                 markersize=10,
