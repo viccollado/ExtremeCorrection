@@ -1,11 +1,11 @@
 # Upper-tail correction of multivariate synthetic environmental series using annual maxima
 
-This repository contains the complete code for the Extreme Correction technique described in this [brief report](https://rdcu.be/fbVgK) published in Stochastic Environmental Research and Risk Assessment. The notebooks folder contains the examples used in the paper. 
+This repository contains the complete code for the Upper-tail correction technique described in this [brief report](https://rdcu.be/fbVgK) published in Stochastic Environmental Research and Risk Assessment. The notebooks folder contains the examples used in the paper. 
 
 The code is also implemented in the [Bluemath](https://github.com/GeoOcean/BlueMath_tk) Python package developed by [GeoOcean](https://github.com/GeoOcean). 
 
 ## Repository Structure
-- `src`: This folder contains the core implementation of the Extreme Correction technique and other utils functions employed in the code. The provided class performs the correction without stratification.
+- `src`: This folder contains the core implementation of the Upper-tail correction technique and other utils functions employed in the code. The provided class performs the correction without stratification.
 
 - `Notebooks`: These notebook demonstrates the application of the correction technique for Santoña, Spain in two different variables, significant wave height ($H_s$) and wave peak period ($T_p$). The step-by-step process illustrates how the method refines extreme value estimates.
 
