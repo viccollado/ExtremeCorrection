@@ -1,4 +1,4 @@
-# Extreme Correction
+# Upper-tail correction of multivariate synthetic environmental series using annual maxima
 
 This repository contains the complete code for the Extreme Correction technique described in this [brief report](https://rdcu.be/fbVgK) published in Stochastic Environmental Research and Risk Assessment. The notebooks folder contains the examples used in the paper. 
 
